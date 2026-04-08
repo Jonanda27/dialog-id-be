@@ -4,6 +4,8 @@ import dbConfig from '../config/database.js';
 // Import Models
 import User from './User.js';
 import Store from './Store.js';
+import Product from './Product.js';
+import ProductMedia from './ProductMedia.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -20,6 +22,8 @@ const sequelize = new Sequelize(config.database, config.username, config.passwor
 const models = {
   User: User.init(sequelize),
   Store: Store.init(sequelize),
+  Product: Product.init(sequelize),
+  ProductMedia: ProductMedia.init(sequelize),
 };
 
 // Eksekusi fungsi associate() jika ada di dalam model

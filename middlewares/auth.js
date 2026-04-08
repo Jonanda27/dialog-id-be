@@ -54,3 +54,34 @@ export const authorize = (...roles) => {
         next();
     };
 };
+
+/**
+ * Middleware untuk memastikan toko seller berstatus 'approved'
+ * Digunakan pada rute yang membutuhkan aksi modifikasi toko/katalog.
+ */
+export const isStoreApproved = async (req, res, next) => {
+    try {
+        // Cari toko berdasarkan ID user yang sedang login
+        const store = await db.Store.findOne({ where: { user_id: req.user.id } });
+
+        if (!store) {
+            return res.status(403).json({
+                success: false,
+                message: 'Akses ditolak. Anda belum mendaftarkan toko.'
+            });
+        }
+
+        if (store.status !== 'approved') {
+            return res.status(403).json({
+                success: false,
+                message: `Akses ditolak. Status toko Anda saat ini adalah '${store.status}'. Toko harus diverifikasi oleh Admin terlebih dahulu.`
+            });
+        }
+
+        // Inject data toko ke request object agar tidak perlu query ulang di controller
+        req.store = store;
+        next();
+    } catch (error) {
+        next(error);
+    }
+};

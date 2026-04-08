@@ -44,3 +44,7 @@ export const uploadKYC = async (storeId, ktpUrl) => {
 
     return store;
 };
+
+export const getStoreByUserId = async (userId) => {
+    return await db.Store.findOne({ where: { user_id: userId } });
+};
