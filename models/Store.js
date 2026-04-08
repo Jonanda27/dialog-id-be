@@ -1,0 +1,54 @@
+import { Model, DataTypes } from 'sequelize';
+
+export default class Store extends Model {
+    static init(sequelize) {
+        return super.init({
+            id: {
+                type: DataTypes.UUID,
+                defaultValue: DataTypes.UUIDV4,
+                primaryKey: true,
+            },
+            user_id: {
+                type: DataTypes.UUID,
+                allowNull: false,
+                unique: true,
+            },
+            name: {
+                type: DataTypes.STRING,
+                allowNull: false,
+                unique: true,
+            },
+            description: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+            ktp_url: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            status: {
+                type: DataTypes.ENUM('pending', 'approved', 'rejected', 'suspended'),
+                defaultValue: 'pending',
+                allowNull: false,
+            },
+            balance: {
+                type: DataTypes.DECIMAL(15, 2),
+                defaultValue: 0.00,
+                allowNull: false,
+            }
+        }, {
+            sequelize,
+            tableName: 'stores',
+            modelName: 'Store',
+            underscored: true,
+        });
+    }
+
+    static associate(models) {
+        // Relasi kebalikan (Inverse Relation)
+        this.belongsTo(models.User, {
+            foreignKey: 'user_id',
+            as: 'owner'
+        });
+    }
+}

@@ -1,8 +1,14 @@
-const express = require('express');
+import express from 'express';
+import { register, login } from '../controllers/authController.js';
+import { validateRequest, registerSchema, loginSchema } from '../validations/authValidation.js';
+
 const router = express.Router();
-const authController = require('../controllers/authController');
 
-router.post('/register', authController.register);
-router.post('/login', authController.login);
+// Route: POST /api/auth/register
+// Middleware 1: Validasi Zod -> Middleware 2: Controller logic
+router.post('/register', validateRequest(registerSchema), register);
 
-module.exports = router;
+// Route: POST /api/auth/login
+router.post('/login', validateRequest(loginSchema), login);
+
+export default router;
