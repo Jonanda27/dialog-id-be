@@ -14,35 +14,20 @@ const generateToken = (userId, role) => {
 export const registerUser = async (userData) => {
     const { email, password, full_name, role } = userData;
 
-    // 1. Cek apakah email sudah terdaftar
-    const existingUser = await db.User.findOne({ where: { email } });
-    if (existingUser) {
-        const error = new Error('Email sudah terdaftar. Silakan gunakan email lain.');
-        error.statusCode = 409; // Conflict
+    // 1. SECURITY REFINEMENT: Cegah registrasi publik untuk role admin
+    if (role === 'admin') {
+        const error = new Error('Akses ditolak. Tidak dapat melakukan registrasi untuk role Admin melalui jalur publik.');
+        error.statusCode = 403; // Forbidden
         throw error;
     }
 
-    // 2. Buat user baru (Password di-hash otomatis oleh hooks di Model)
-    const newUser = await db.User.create({
-        email,
-        password,
-        full_name,
-        role,
-    });
-
-    // 3. Generate Token
-    const token = generateToken(newUser.id, newUser.role);
-
-    // 4. Return data tanpa password
-    return {
-        user: {
-            id: newUser.id,
-            email: newUser.email,
-            full_name: newUser.full_name,
-            role: newUser.role,
-        },
-        token,
-    };
+    // 2. Cek apakah email sudah terdaftar
+    const existingUser = await db.User.findOne({ where: { email } });
+    if (existingUser) {
+        const error = new Error('Email sudah terdaftar. Silakan gunakan email lain.');
+        error.statusCode = 409;
+        throw error;
+    }
 };
 
 export const loginUser = async (credentials) => {
@@ -77,4 +62,27 @@ export const loginUser = async (credentials) => {
         },
         token,
     };
+};
+
+export const getUserProfile = async (userId) => {
+    // Ambil data user, kecualikan kolom password agar tidak bocor ke client
+    const user = await db.User.findByPk(userId, {
+        attributes: { exclude: ['password', 'password_hash'] }, // Exclude password/password_hash
+        include: [
+            {
+                model: db.Store,
+                as: 'store', // Sesuai dengan alias di relasi User.hasOne(Store, { as: 'store' })
+                // Anda bisa membatasi atribut store yang dikirim jika perlu:
+                // attributes: ['id', 'name', 'status'] 
+            }
+        ]
+    });
+
+    if (!user) {
+        const error = new Error('User tidak ditemukan.');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    return user;
 };
