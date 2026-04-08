@@ -11,23 +11,39 @@ const generateToken = (userId, role) => {
     });
 };
 
+
 export const registerUser = async (userData) => {
     const { email, password, full_name, role } = userData;
 
-    // 1. SECURITY REFINEMENT: Cegah registrasi publik untuk role admin
+    // 1. SECURITY REFINEMENT
     if (role === 'admin') {
-        const error = new Error('Akses ditolak. Tidak dapat melakukan registrasi untuk role Admin melalui jalur publik.');
-        error.statusCode = 403; // Forbidden
+        const error = new Error('Akses ditolak.');
+        error.statusCode = 403; 
         throw error;
     }
 
-    // 2. Cek apakah email sudah terdaftar
+    // 2. Cek email
     const existingUser = await db.User.findOne({ where: { email } });
     if (existingUser) {
-        const error = new Error('Email sudah terdaftar. Silakan gunakan email lain.');
+        const error = new Error('Email sudah terdaftar.');
         error.statusCode = 409;
         throw error;
     }
+
+    // 3. PROSES SIMPAN (TIDAK PERLU bcrypt.hash di sini)
+    // Karena Hooks di models/User.js sudah otomatis melakukan hashing
+    const newUser = await db.User.create({
+        full_name,
+        email,
+        password, // Kirim plain text saja, biar Hooks Model yang mengurusnya
+        role: role || 'buyer' 
+    });
+
+    // 4. Respon
+    const userResponse = newUser.toJSON();
+    delete userResponse.password;
+
+    return userResponse;
 };
 
 export const loginUser = async (credentials) => {

@@ -15,24 +15,26 @@ export const errorHandler = (err, req, res, next) => {
     }
 
     // 1. Handle Zod Validation Errors
-    if (err.name === 'ZodError') {
-        statusCode = 400;
-        message = 'Validation Error';
-        errors = err.errors.map((e) => ({
-            field: e.path.join('.'),
-            message: e.message
-        }));
-    }
+if (err.name === 'ZodError') {
+    statusCode = 400;
+    message = 'Validation Error';
+    // Tambahkan check array atau optional chaining (?.)
+    errors = err.errors?.map((e) => ({
+        field: e.path.join('.'),
+        message: e.message
+    })) || []; 
+}
 
-    // 2. Handle Sequelize Database Errors
-    if (err.name === 'SequelizeUniqueConstraintError') {
-        statusCode = 409; // Conflict
-        message = 'Duplicate data found';
-        errors = err.errors.map((e) => ({
-            field: e.path,
-            message: e.message
-        }));
-    }
+// 2. Handle Sequelize Database Errors
+if (err.name === 'SequelizeUniqueConstraintError' || err.name === 'SequelizeValidationError') {
+    statusCode = err.name === 'SequelizeUniqueConstraintError' ? 409 : 400;
+    message = err.name === 'SequelizeUniqueConstraintError' ? 'Duplicate data found' : 'Database Validation Error';
+    // Lakukan hal yang sama di sini
+    errors = err.errors?.map((e) => ({
+        field: e.path,
+        message: e.message
+    })) || [];
+}
 
     if (err.name === 'SequelizeValidationError') {
         statusCode = 400;
