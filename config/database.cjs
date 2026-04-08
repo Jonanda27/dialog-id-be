@@ -1,18 +1,13 @@
-import dotenv from 'dotenv';
-dotenv.config();
+require('dotenv').config();
 
-/**
- * Sequelize configuration using environment variables
- * Optimized with connection pooling for enterprise load
- */
-export default {
+module.exports = {
     development: {
         username: process.env.DB_USERNAME,
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
         host: process.env.DB_HOST,
         dialect: process.env.DB_DIALECT || 'postgres',
-        logging: false, // Set to true to see RAW SQL query logs
+        logging: false, // Ubah ke console.log jika ingin melihat raw query
         pool: {
             max: 5,
             min: 0,
@@ -36,7 +31,7 @@ export default {
         dialect: process.env.DB_DIALECT || 'postgres',
         logging: false,
         pool: {
-            max: 20, // Higher max connections for production
+            max: 20,
             min: 5,
             acquire: 60000,
             idle: 10000

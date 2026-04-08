@@ -1,11 +1,15 @@
 import { Sequelize } from 'sequelize';
-import dbConfig from '../config/database.js';
+import dbConfig from '../config/database.cjs';
 
 // Import Models
 import User from './User.js';
 import Store from './Store.js';
 import Product from './Product.js';
 import ProductMedia from './ProductMedia.js';
+import Order from './Order.js';
+import OrderItem from './OrderItem.js';
+import Escrow from './Escrow.js';
+import WalletTransaction from './WalletTransaction.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -24,6 +28,10 @@ const models = {
   Store: Store.init(sequelize),
   Product: Product.init(sequelize),
   ProductMedia: ProductMedia.init(sequelize),
+  Order: Order.init(sequelize),
+  OrderItem: OrderItem.init(sequelize),
+  Escrow: Escrow.init(sequelize),
+  WalletTransaction: WalletTransaction.init(sequelize),
 };
 
 // Eksekusi fungsi associate() jika ada di dalam model
