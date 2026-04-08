@@ -15,6 +15,8 @@ import authRoutes from './routes/authRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import productRoutes from './routes/productRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -73,7 +75,13 @@ const swaggerOptions = {
           scheme: 'bearer',
           bearerFormat: 'JWT',
         },
+        ApiKeyAuth: { // Tambahkan ini
+          type: 'apiKey',
+          in: 'header',
+          name: 'x-api-key'
+        },
       },
+      
     },
     security: [{ bearerAuth: [] }],
   },
@@ -99,8 +107,10 @@ app.use('/api/stores', storeRoutes);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/stores', storeRoutes);
-app.use('/api/admin', adminRoutes); // Mount Admin Routes
+app.use('/api/admin', adminRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/payments', paymentRoutes);
 
 
 // ==========================================

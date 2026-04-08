@@ -10,6 +10,7 @@ import Order from './Order.js';
 import OrderItem from './OrderItem.js';
 import Escrow from './Escrow.js';
 import WalletTransaction from './WalletTransaction.js';
+import GradingRequest from './GradingRequest.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -32,6 +33,7 @@ const models = {
   OrderItem: OrderItem.init(sequelize),
   Escrow: Escrow.init(sequelize),
   WalletTransaction: WalletTransaction.init(sequelize),
+  GradingRequest: GradingRequest.init(sequelize),
 };
 
 // Eksekusi fungsi associate() jika ada di dalam model

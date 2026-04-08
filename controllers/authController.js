@@ -33,3 +33,22 @@ export const login = asyncHandler(async (req, res) => {
     result
   );
 });
+
+/**
+ * @desc    Get current logged in user profile
+ * @route   GET /api/auth/me
+ * @access  Private
+ */
+export const getMe = asyncHandler(async (req, res) => {
+  // ID didapatkan dari middleware authenticate yang menyisipkan req.user
+  const userId = req.user.id;
+
+  const result = await authService.getUserProfile(userId);
+
+  return successResponse(
+    res,
+    200,
+    'User profile retrieved successfully',
+    result
+  );
+});
