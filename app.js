@@ -13,11 +13,19 @@ import { errorResponse, successResponse } from './utils/apiResponse.js';
 // Import Routes
 import authRoutes from './routes/authRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import productRoutes from './routes/productRoutes.js';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+
+// ==========================================
+// STATIC FILES SERVER
+// ==========================================
+// Membuat folder public dapat diakses secara publik via URL browser
+app.use('/public', express.static('public'));
 
 // ==========================================
 // 1. GLOBAL MIDDLEWARES & SECURITY
@@ -88,6 +96,12 @@ app.get('/health', (req, res) => {
 // Mount Feature Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/stores', storeRoutes);
+
+app.use('/api/auth', authRoutes);
+app.use('/api/stores', storeRoutes);
+app.use('/api/admin', adminRoutes); // Mount Admin Routes
+app.use('/api/products', productRoutes);
+
 
 // ==========================================
 // 4. 404 & GLOBAL ERROR HANDLING
