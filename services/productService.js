@@ -37,7 +37,7 @@ export const createProduct = async (storeId, productData, files) => {
 
 export const getAllProducts = async (filters = {}) => {
     // Basic filtering criteria
-    const whereClause = { is_active: true };
+    const whereClause = {};
     if (filters.format) whereClause.format = filters.format;
     if (filters.grading) whereClause.grading = filters.grading;
 
