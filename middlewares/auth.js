@@ -24,7 +24,7 @@ export const authenticate = async (req, res, next) => {
 
         // 3. Validasi eksistensi user (Mencegah phantom session jika user dihapus/diblokir)
         const currentUser = await db.User.findByPk(decoded.id, {
-            attributes: ['id', 'email', 'role', 'status'] // Hanya ambil field esensial
+            attributes: ['id', 'email', 'role'] // Hanya ambil field esensial
         });
 
         if (!currentUser) {

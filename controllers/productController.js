@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
-import * as productService from '../services/productService.js';
+import ProductService from '../services/productService.js';
 
 export const createProduct = asyncHandler(async (req, res) => {
     // 1. Ekstraksi Context: req.store di-inject secara aman oleh middleware Fase A
@@ -14,7 +14,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     const files = req.files;
 
     // 3. Delegasi (Controller Pattern): Menyerahkan orkestrasi ke layer Service
-    const result = await productService.createProduct(storeId, productData, files);
+    const result = await ProductService.createProduct(storeId, productData, files);
 
     return successResponse(
         res,
@@ -30,11 +30,11 @@ export const getProducts = asyncHandler(async (req, res) => {
         grading: req.query.grading
     };
 
-    const result = await productService.getAllProducts(filters);
+    const result = await ProductService.getAllProducts(filters);
     return successResponse(res, 200, 'Berhasil mengambil daftar produk', result);
 });
 
 export const getDetail = asyncHandler(async (req, res) => {
-    const result = await productService.getProductDetails(req.params.id);
+    const result = await ProductService.getProductDetails(req.params.id);
     return successResponse(res, 200, 'Berhasil mengambil detail produk', result);
 });
