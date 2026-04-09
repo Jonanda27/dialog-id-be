@@ -1,16 +1,20 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
-import * as productService from '../services/productService.js';
+import ProductService from '../services/productService.js';
 
 export const createProduct = asyncHandler(async (req, res) => {
-    // req.store di-inject oleh middleware isStoreApproved
+    // 1. Ekstraksi Context: req.store di-inject secara aman oleh middleware Fase A
     const storeId = req.store.id;
 
-    // Karena multipart/form-data, payload ada di req.body, file ada di req.files
+    // 2. Ekstraksi Payload: multipart/form-data memisahkan teks dan biner
+    // Analisis Tipe Data: property price, stock, dan release_year di dalam req.body 
+    // akan terdeteksi sebagai tipe 'string'. Pastikan DTO/Validator (seperti Zod/Joi) 
+    // melakukan casting ke 'number' sebelum masuk ke productService.
     const productData = req.body;
     const files = req.files;
 
-    const result = await productService.createProduct(storeId, productData, files);
+    // 3. Delegasi (Controller Pattern): Menyerahkan orkestrasi ke layer Service
+    const result = await ProductService.createProduct(storeId, productData, files);
 
     return successResponse(
         res,
@@ -53,18 +57,17 @@ export const deleteProduct = asyncHandler(async (req, res) => {
 });
 
 export const getProducts = asyncHandler(async (req, res) => {
-    // Ambil query params untuk filtering (contoh: ?format=Vinyl&grading=Mint)
     const filters = {
         format: req.query.format,
         grading: req.query.grading
     };
 
-    const result = await productService.getAllProducts(filters);
+    const result = await ProductService.getAllProducts(filters);
     return successResponse(res, 200, 'Berhasil mengambil daftar produk', result);
 });
 
 export const getDetail = asyncHandler(async (req, res) => {
-    const result = await productService.getProductDetails(req.params.id);
+    const result = await ProductService.getProductDetails(req.params.id);
     return successResponse(res, 200, 'Berhasil mengambil detail produk', result);
 });
 

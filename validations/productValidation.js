@@ -1,5 +1,10 @@
+// File: dialog-id-be/validations/productValidation.js
 import { z } from 'zod';
 
+/**
+ * Skema validasi untuk pembuatan produk baru.
+ * Menggunakan z.coerce untuk menangani input string dari multipart/form-data.
+ */
 export const createProductSchema = z.object({
   body: z.object({ // 👈 Tambahkan pembungkus body di sini
     name: z.string().trim().min(1, 'Nama produk/album wajib diisi'),
