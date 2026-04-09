@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, getMe } from '../controllers/authController.js';
+import { register, login, getMe, logout } from '../controllers/authController.js';
 import { validateRequest, registerSchema, loginSchema } from '../validations/authValidation.js';
 import { resolveAdminDispute } from '../controllers/disputeController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
@@ -33,6 +33,22 @@ router.post('/login', validateRequest(loginSchema), login);
  *         description: Data user tidak ditemukan di database (Not Found)
  */
 router.get('/me', authenticate, getMe);
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ * post:
+ * summary: Logout user dan mengakhiri sesi
+ * tags: [Auth]
+ * security:
+ * - bearerAuth: []
+ * responses:
+ * 200:
+ * description: Logout berhasil
+ * 401:
+ * description: Tidak terautentikasi
+ */
+router.post('/logout', authenticate, logout);
 
 /**
  * @swagger

@@ -52,3 +52,19 @@ export const getMe = asyncHandler(async (req, res) => {
     result
   );
 });
+
+/**
+ * @desc    Logout user & membersihkan sesi
+ * @route   POST /api/auth/logout
+ * @access  Private
+ */
+export const logout = asyncHandler(async (req, res) => {
+  // Memanggil service untuk memastikan proses bisnis logout terpenuhi
+  await authService.logoutUser();
+
+  return successResponse(
+    res,
+    200,
+    'Logout berhasil'
+  );
+});

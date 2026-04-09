@@ -1,30 +1,31 @@
 import { z } from 'zod';
 
 export const createProductSchema = z.object({
-    body: z.object({
-        name: z.string().min(1, 'Nama produk/album wajib diisi'),
-        artist: z.string().min(1, 'Nama artis wajib diisi'),
-        release_year: z.preprocess(
-            (val) => (val ? parseInt(val, 10) : undefined),
-            z.number().int().min(1900, 'Tahun tidak valid').optional()
-        ),
-        label: z.string().optional(),
-        matrix_number: z.string().optional(),
-        format: z.enum(['Vinyl', 'Cassette', 'CD', 'Gear'], {
-            errorMap: () => ({ message: "Format harus berupa 'Vinyl', 'Cassette', 'CD', atau 'Gear'" })
-        }),
-        grading: z.enum(['Mint', 'NM', 'VG+', 'VG', 'Good', 'Fair'], {
-            errorMap: () => ({ message: "Grading tidak valid sesuai standar yang ditetapkan" })
-        }),
-        condition_notes: z.string().optional(),
-        // Menggunakan preprocess untuk konversi string dari form-data ke tipe numerik
-        price: z.preprocess(
-            (val) => Number(val),
-            z.number().positive('Harga harus lebih dari 0')
-        ),
-        stock: z.preprocess(
-            (val) => Number(val),
-            z.number().int().nonnegative('Stok tidak boleh bernilai negatif')
-        )
-    })
+  body: z.object({ // 👈 Tambahkan pembungkus body di sini
+    name: z.string().trim().min(1, 'Nama produk/album wajib diisi'),
+    artist: z.string().trim().min(1, 'Nama artis wajib diisi'),
+    
+    // Gunakan coerce agar string "2000" otomatis jadi number 2000
+    release_year: z.coerce.number()
+      .int()
+      .min(1900)
+      .max(new Date().getFullYear() + 1)
+      .optional(),
+    
+    format: z.enum(['Vinyl', 'Cassette', 'CD', 'Gear'], {
+      errorMap: () => ({ message: "Format tidak valid" })
+    }),
+    
+    grading: z.enum(['Mint', 'NM', 'VG+', 'VG', 'Good', 'Fair'], {
+      errorMap: () => ({ message: "Grading tidak valid" })
+    }),
+    
+    // Coerce mengatasi masalah "NaN" dari Multer
+    price: z.coerce.number().positive('Harga harus lebih dari 0'),
+    stock: z.coerce.number().int().nonnegative('Stok tidak boleh negatif'),
+    
+    label: z.preprocess((val) => (val === "" ? null : val), z.string().optional().nullable()),
+    matrix_number: z.preprocess((val) => (val === "" ? null : val), z.string().optional().nullable()),
+    condition_notes: z.preprocess((val) => (val === "" ? null : val), z.string().optional().nullable())
+  })
 });
