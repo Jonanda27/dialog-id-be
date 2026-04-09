@@ -3,13 +3,17 @@ import { successResponse } from '../utils/apiResponse.js';
 import * as productService from '../services/productService.js';
 
 export const createProduct = asyncHandler(async (req, res) => {
-    // req.store di-inject oleh middleware isStoreApproved
+    // 1. Ekstraksi Context: req.store di-inject secara aman oleh middleware Fase A
     const storeId = req.store.id;
 
-    // Karena multipart/form-data, payload ada di req.body, file ada di req.files
+    // 2. Ekstraksi Payload: multipart/form-data memisahkan teks dan biner
+    // Analisis Tipe Data: property price, stock, dan release_year di dalam req.body 
+    // akan terdeteksi sebagai tipe 'string'. Pastikan DTO/Validator (seperti Zod/Joi) 
+    // melakukan casting ke 'number' sebelum masuk ke productService.
     const productData = req.body;
     const files = req.files;
 
+    // 3. Delegasi (Controller Pattern): Menyerahkan orkestrasi ke layer Service
     const result = await productService.createProduct(storeId, productData, files);
 
     return successResponse(
@@ -21,7 +25,6 @@ export const createProduct = asyncHandler(async (req, res) => {
 });
 
 export const getProducts = asyncHandler(async (req, res) => {
-    // Ambil query params untuk filtering (contoh: ?format=Vinyl&grading=Mint)
     const filters = {
         format: req.query.format,
         grading: req.query.grading

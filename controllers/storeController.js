@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { successResponse } from '../utils/apiResponse.js';
-import * as storeService from '../services/storeService.js';
+import { successResponse, errorResponse } from '../utils/apiResponse.js';
+import StoreService from '../services/storeService.js';
 
 /**
  * @desc    Registrasi toko baru untuk Seller
@@ -9,7 +9,7 @@ import * as storeService from '../services/storeService.js';
  */
 export const registerStore = asyncHandler(async (req, res) => {
     // req.user.id didapatkan dari middleware authenticate
-    const result = await storeService.createStore(req.user.id, req.body);
+    const result = await StoreService.createStore(req.user.id, req.body);
 
     return successResponse(
         res,
@@ -29,15 +29,51 @@ export const uploadKycDocument = asyncHandler(async (req, res) => {
         return errorResponse(res, 400, 'File gambar KTP wajib diunggah.');
     }
 
-    // Generate URL/Path lokal yang bisa diakses via browser
-    const ktpUrl = `/public/uploads/kyc/${req.file.filename}`;
+    // Generate URL/Path lokal tanpa awalan '/public' agar sejalan dengan express.static
+    const ktpUrl = `/uploads/kyc/${req.file.filename}`;
 
     // Ambil data toko milik user yang sedang login
-    const store = await storeService.getStoreByUserId(req.user.id);
-    if (!store) return errorResponse(res, 404, 'Toko belum didaftarkan.');
+    const store = await StoreService.getStoreByUserId(req.user.id);
+    if (!store) {
+        return errorResponse(res, 404, 'Toko belum didaftarkan.');
+    }
 
-    // Update KTP url menggunakan service (Silakan tambahkan getStoreByUserId di storeService)
-    const updatedStore = await storeService.uploadKYC(store.id, ktpUrl);
+    // Update dokumen KYC ke database
+    const updatedStore = await StoreService.uploadKYC(store.id, ktpUrl);
 
-    return successResponse(res, 200, 'Dokumen KTP berhasil diunggah', updatedStore);
+    return successResponse(res, 200, 'Dokumen KTP berhasil diunggah. Menunggu verifikasi Admin.', updatedStore);
+});
+
+/**
+ * @desc    Mendapatkan profil toko milik user yang sedang login
+ * @route   GET /api/stores/my-store
+ * @access  Private (Role: Seller)
+ */
+export const getMyStore = asyncHandler(async (req, res) => {
+    const store = await StoreService.getStoreByUserId(req.user.id);
+    if (!store) {
+        return errorResponse(res, 404, 'Toko tidak ditemukan atau belum didaftarkan.');
+    }
+
+    return successResponse(res, 200, 'Berhasil memuat data toko.', store);
+});
+
+/**
+ * @desc    Mengambil saldo dan riwayat transaksi (mutasi) dompet toko
+ * @route   GET /api/stores/wallet
+ * @access  Private (Role: Seller) - Harus melalui middleware isStoreApproved
+ */
+export const getWallet = asyncHandler(async (req, res) => {
+    // req.store secara aman diinjeksi oleh middleware isStoreApproved (Fase A)
+    // Memastikan data dompet yang ditarik mutlak milik toko tersebut
+    const storeId = req.store.id;
+
+    const result = await StoreService.getStoreWallet(storeId);
+
+    return successResponse(
+        res,
+        200,
+        'Berhasil memuat informasi dompet dan mutasi toko.',
+        result
+    );
 });

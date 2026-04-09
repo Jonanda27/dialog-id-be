@@ -1,3 +1,4 @@
+// File: dialog-id-be/middlewares/auth.js
 import jwt from 'jsonwebtoken';
 import db from '../models/index.js';
 import { errorResponse } from '../utils/apiResponse.js';
@@ -6,41 +7,41 @@ import { errorResponse } from '../utils/apiResponse.js';
  * Middleware untuk memverifikasi JWT Token dari header Authorization
  */
 export const authenticate = async (req, res, next) => {
-    let token;
-
-    // 1. Ekstrak token dari header
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-        token = req.headers.authorization.split(' ')[1];
-    }
-
-    // 2. Jika token tidak ada
-    if (!token) {
-        return errorResponse(res, 401, 'Akses ditolak. Token tidak ditemukan.');
-    }
-
     try {
-        // 3. Verifikasi token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        let token;
 
-        // 4. Pastikan user masih ada di database (mencegah akses jika user sudah dihapus)
-        const currentUser = await db.User.findByPk(decoded.id);
-        if (!currentUser) {
-            return errorResponse(res, 401, 'User pemilik token ini sudah tidak ada.');
+        // 1. Ekstrak token secara aman
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+            token = req.headers.authorization.split(' ')[1];
         }
 
-        // 5. Inject data user ke object request
+        if (!token) {
+            return errorResponse(res, 401, 'Akses ditolak. Token otorisasi tidak ditemukan.');
+        }
+
+        // 2. Verifikasi JWT
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        // 3. Validasi eksistensi user (Mencegah phantom session jika user dihapus/diblokir)
+        const currentUser = await db.User.findByPk(decoded.id, {
+            attributes: ['id', 'email', 'role', 'status'] // Hanya ambil field esensial
+        });
+
+        if (!currentUser) {
+            return errorResponse(res, 401, 'Sesi tidak valid. Pengguna tidak ditemukan.');
+        }
+
+        // 4. Inject data user ke objek request
         req.user = currentUser;
         next();
     } catch (error) {
-        // Error spesifik JWT akan ditangkap oleh Global Error Handler, 
-        // tapi kita bisa langsung return 401 di sini demi kecepatan respon.
-        return errorResponse(res, 401, 'Token tidak valid atau sudah kadaluwarsa.');
+        // Biarkan Global Error Handler menangani spesifikasi error JWT
+        next(error);
     }
 };
 
 /**
- * Middleware untuk otorisasi berdasarkan Role (RBAC)
- * @param  {...string} roles - Daftar role yang diizinkan (misal: 'admin', 'seller')
+ * Middleware Otorisasi berbasis Role (RBAC)
  */
 export const authorize = (...roles) => {
     return (req, res, next) => {
@@ -48,7 +49,7 @@ export const authorize = (...roles) => {
             return errorResponse(
                 res,
                 403,
-                `Akses terlarang. Role '${req.user ? req.user.role : 'Guest'}' tidak memiliki izin mengakses endpoint ini.`
+                `Akses terlarang. Peran '${req.user?.role || 'Guest'}' tidak memiliki izin.`
             );
         }
         next();
@@ -56,29 +57,26 @@ export const authorize = (...roles) => {
 };
 
 /**
- * Middleware untuk memastikan toko seller berstatus 'approved'
- * Digunakan pada rute yang membutuhkan aksi modifikasi toko/katalog.
+ * Middleware Store Guard: Memastikan integritas data toko milik penjual
+ * Harus dipanggil SETELAH authenticate dan authorize('seller')
  */
 export const isStoreApproved = async (req, res, next) => {
     try {
-        // Cari toko berdasarkan ID user yang sedang login
-        const store = await db.Store.findOne({ where: { user_id: req.user.id } });
+        // Cari toko berdasarkan relasi user_id
+        const store = await db.Store.findOne({
+            where: { user_id: req.user.id },
+            attributes: ['id', 'name', 'status', 'balance']
+        });
 
         if (!store) {
-            return res.status(403).json({
-                success: false,
-                message: 'Akses ditolak. Anda belum mendaftarkan toko.'
-            });
+            return errorResponse(res, 403, 'Akses ditolak. Anda belum mendaftarkan toko.');
         }
 
         if (store.status !== 'approved') {
-            return res.status(403).json({
-                success: false,
-                message: `Akses ditolak. Status toko Anda saat ini adalah '${store.status}'. Toko harus diverifikasi oleh Admin terlebih dahulu.`
-            });
+            return errorResponse(res, 403, `Akses ditolak. Status toko Anda adalah '${store.status}'.`);
         }
 
-        // Inject data toko ke request object agar tidak perlu query ulang di controller
+        // Inject data toko ke request object. Controller HANYA boleh pakai ID dari sini.
         req.store = store;
         next();
     } catch (error) {

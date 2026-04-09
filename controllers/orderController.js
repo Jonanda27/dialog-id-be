@@ -16,16 +16,26 @@ export const checkout = asyncHandler(async (req, res) => {
     );
 });
 
+export const getStoreOrders = asyncHandler(async (req, res) => {
+    // req.store di-inject oleh middleware isStoreApproved (Fase A)
+    const storeId = req.store.id;
+    const statusFilter = req.query.status;
+
+    const result = await OrderService.getStoreOrders(storeId, statusFilter);
+    return successResponse(res, 200, 'Berhasil memuat daftar pesanan.', result);
+});
+
 export const ship = asyncHandler(async (req, res) => {
     const { tracking_number } = req.body;
-    const sellerId = req.user.id; // Diambil dari token
+    // PERBAIKAN: Gunakan store.id, BUKAN user.id agar sinkron dengan Service
+    const storeId = req.store.id;
     const orderId = req.params.id;
 
     if (!tracking_number) {
-        return res.status(400).json({ success: false, message: 'Resi pengiriman (tracking_number) wajib diisi.' });
+        return res.status(400).json({ success: false, message: 'Resi pengiriman wajib diisi.' });
     }
 
-    const result = await orderService.shipOrder(orderId, sellerId, tracking_number);
+    const result = await OrderService.shipOrder(orderId, storeId, tracking_number);
     return successResponse(res, 200, 'Pesanan berhasil dikirim dan resi tersimpan.', result);
 });
 
