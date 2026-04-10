@@ -1,36 +1,54 @@
-// File: dialog-id-be/validations/productValidation.js
 import { z } from 'zod';
 
 /**
  * Skema validasi untuk pembuatan produk baru.
- * Menggunakan z.coerce untuk menangani input string dari multipart/form-data.
+ * Beradaptasi dengan arsitektur JSONB Metadata.
  */
 export const createProductSchema = z.object({
-  body: z.object({ // 👈 Tambahkan pembungkus body di sini
-    name: z.string().trim().min(1, 'Nama produk/album wajib diisi'),
-    artist: z.string().trim().min(1, 'Nama artis wajib diisi'),
-    
-    // Gunakan coerce agar string "2000" otomatis jadi number 2000
-    release_year: z.coerce.number()
-      .int()
-      .min(1900)
-      .max(new Date().getFullYear() + 1)
-      .optional(),
-    
-    format: z.enum(['Vinyl', 'Cassette', 'CD', 'Gear'], {
-      errorMap: () => ({ message: "Format tidak valid" })
-    }),
-    
-    grading: z.enum(['Mint', 'NM', 'VG+', 'VG', 'Good', 'Fair'], {
-      errorMap: () => ({ message: "Grading tidak valid" })
-    }),
-    
-    // Coerce mengatasi masalah "NaN" dari Multer
-    price: z.coerce.number().positive('Harga harus lebih dari 0'),
-    stock: z.coerce.number().int().nonnegative('Stok tidak boleh negatif'),
-    
-    label: z.preprocess((val) => (val === "" ? null : val), z.string().optional().nullable()),
-    matrix_number: z.preprocess((val) => (val === "" ? null : val), z.string().optional().nullable()),
-    condition_notes: z.preprocess((val) => (val === "" ? null : val), z.string().optional().nullable())
-  })
+    name: z.string()
+        .min(5, 'Nama produk minimal 5 karakter.')
+        .max(255, 'Nama produk maksimal 255 karakter.'),
+
+    // Coercion: Mengubah string dari form-data ke Number
+    price: z.coerce.number({
+        required_error: 'Harga produk wajib diisi.',
+        invalid_type_error: 'Format harga tidak valid, harus berupa angka.'
+    }).positive('Harga produk harus lebih dari 0.'),
+
+    // Coercion: Memastikan dia bilangan bulat (integer)
+    stock: z.coerce.number({
+        required_error: 'Stok produk wajib diisi.',
+        invalid_type_error: 'Format stok tidak valid, harus berupa angka.'
+    }).int('Stok harus berupa bilangan bulat.').nonnegative('Stok tidak boleh bernilai negatif.'),
+
+    // BARU: Relasi Sub-Kategori
+    sub_category_id: z.string({
+        required_error: 'Sub Kategori wajib dipilih.'
+    }).uuid('Format ID Sub Kategori tidak valid.'),
+
+    // BARU & GAME CHANGER: Validasi Dinamis Metadata
+    // z.preprocess akan menangkap data sebelum divalidasi. Jika data berupa String (biasanya karena multipart/form-data), ia akan mencoba mengubahnya menjadi JSON.
+    metadata: z.preprocess(
+        (val) => {
+            if (typeof val === 'string') {
+                try {
+                    return JSON.parse(val);
+                } catch (e) {
+                    return { error: 'Invalid JSON' }; // Lempar bentuk cacat agar gagal di validasi bawah
+                }
+            }
+            return val;
+        },
+        // Validasi akhirnya harus berupa Object yang bebas isinya (record)
+        z.record(z.any(), {
+            required_error: "Metadata (atribut dinamis) wajib disertakan.",
+            invalid_type_error: "Metadata harus berupa JSON Object yang valid."
+        })
+    )
 });
+
+/**
+ * Skema validasi untuk update produk.
+ * Semua field dibuat opsional (.partial) karena update bisa parsial.
+ */
+export const updateProductSchema = createProductSchema.partial();

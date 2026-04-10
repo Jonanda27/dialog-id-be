@@ -17,6 +17,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js'; // <-- BARU: Import Category Routes
 
 // Load environment variables
 dotenv.config();
@@ -26,29 +27,25 @@ const app = express();
 // ==========================================
 // STATIC FILES SERVER
 // ==========================================
-// Membuat folder public dapat diakses secara publik via URL browser
 app.use('/public', express.static('public'));
 
 // ==========================================
 // 1. GLOBAL MIDDLEWARES & SECURITY
 // ==========================================
-// Set security HTTP headers
 app.use(helmet());
 
-// Enable Cross-Origin Resource Sharing
 app.use(cors({
   origin: process.env.CLIENT_URL || '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 }));
 
-// HTTP Request Logger
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
 // Body parser (JSON & URL-encoded)
-app.use(express.json({ limit: '1mb' })); // Prevent large payloads
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 
@@ -75,17 +72,15 @@ const swaggerOptions = {
           scheme: 'bearer',
           bearerFormat: 'JWT',
         },
-        ApiKeyAuth: { // Tambahkan ini
+        ApiKeyAuth: {
           type: 'apiKey',
           in: 'header',
           name: 'x-api-key'
         },
       },
-      
     },
     security: [{ bearerAuth: [] }],
   },
-  // Path menuju file yang berisi anotasi JSDoc Swagger
   apis: ['./routes/*.js', './controllers/*.js'],
 };
 
@@ -101,22 +96,19 @@ app.get('/health', (req, res) => {
   return successResponse(res, 200, 'Analog.id API is up and running!');
 });
 
-// Mount Feature Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/stores', storeRoutes);
-
+// Mount Feature Routes (Duplikasi telah dibersihkan)
 app.use('/api/auth', authRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/categories', categoryRoutes); // <-- BARU: Mount Category Routes
 
 
 // ==========================================
 // 4. 404 & GLOBAL ERROR HANDLING
 // ==========================================
-// Handle unmapped routes (Express 5 Compatible)
 app.use((req, res) => {
   return errorResponse(res, 404, `Can't find ${req.originalUrl} on this server`);
 });
