@@ -12,9 +12,10 @@ export default class Product extends Model {
                 type: DataTypes.UUID,
                 allowNull: false,
             },
+            // --- RELASI KATEGORI BARU ---
             sub_category_id: {
                 type: DataTypes.UUID,
-                allowNull: true,
+                allowNull: true, // Diset true sementara untuk kompatibilitas data lama
             },
             name: {
                 type: DataTypes.STRING,
@@ -29,11 +30,14 @@ export default class Product extends Model {
                 defaultValue: 1,
                 allowNull: false,
             },
+            // --- GAME CHANGER: JSONB METADATA ---
+            // Menggantikan artist, release_year, label, matrix_number, format, grading, dan condition_notes
             metadata: {
                 type: DataTypes.JSONB,
                 allowNull: false,
                 defaultValue: {},
                 validate: {
+                    // Custom validator untuk memastikan input selalu berbentuk Object {} bukan Array [] atau null
                     isObject(value) {
                         if (typeof value !== 'object' || Array.isArray(value) || value === null) {
                             throw new Error('Metadata harus berupa format JSON Object yang valid');
@@ -50,17 +54,14 @@ export default class Product extends Model {
     }
 
     static associate(models) {
+        // Relasi Existing
         this.belongsTo(models.Store, { foreignKey: 'store_id', as: 'store' });
         this.hasMany(models.ProductMedia, { foreignKey: 'product_id', as: 'media' });
 
+        // --- RELASI BARU ---
+        // Produk ini bernaung di bawah satu Sub-Kategori spesifik
         if (models.SubCategory) {
             this.belongsTo(models.SubCategory, { foreignKey: 'sub_category_id', as: 'subCategory' });
-        }
-
-        // --- RELASI BARU ---
-        // Satu produk bisa memiliki banyak ulasan dari pembeli berbeda
-        if (models.Review) {
-            this.hasMany(models.Review, { foreignKey: 'product_id', as: 'reviews' });
         }
     }
 }

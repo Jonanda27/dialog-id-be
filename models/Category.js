@@ -1,8 +1,7 @@
 'use strict';
-import { Model, DataTypes } from 'sequelize';
+const { Model, DataTypes } = require('sequelize');
 
-// Kita menggunakan export default untuk konsistensi dengan rujukan di models/index.js
-export default (sequelize) => {
+module.exports = (sequelize) => {
     class Category extends Model {
         /**
          * Helper method untuk mendefinisikan asosiasi.
@@ -47,7 +46,7 @@ export default (sequelize) => {
         sequelize,
         modelName: 'Category',
         tableName: 'categories',
-        underscored: true, // Mengubah camelCase ke snake_case untuk konsistensi DB
+        underscored: true, // Otomatis mengubah camelCase ke snake_case (createdAt -> created_at)
         timestamps: true
     });
 

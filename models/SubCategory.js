@@ -1,11 +1,7 @@
 'use strict';
-import { Model, DataTypes } from 'sequelize';
+const { Model, DataTypes } = require('sequelize');
 
-/**
- * Pembaruan ke standar ESM (ECMAScript Modules)
- * Menggunakan export default agar terbaca oleh import di models/index.js
- */
-export default (sequelize) => {
+module.exports = (sequelize) => {
     class SubCategory extends Model {
         static associate(models) {
             // Belongs-To: Sub-Kategori ini milik satu Kategori Induk
