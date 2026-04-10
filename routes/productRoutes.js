@@ -1,5 +1,5 @@
 import express from 'express';
-import { createProduct, getProducts, getDetail } from '../controllers/productController.js';
+import { createProduct, getProducts, getDetail, getMyProducts, bulkCreateProducts, updateProduct, deleteProduct } from '../controllers/productController.js';
 import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
 import { uploadProductPhotos } from '../middlewares/upload.js';
 import { validateRequest } from '../validations/authValidation.js';
@@ -82,6 +82,30 @@ router.post(
     validateRequest(createProductSchema),
     createProduct
 );
+
+// Route untuk seller mengelola produknya sendiri
+router.get(
+    '/my-products', 
+    authenticate, 
+    authorize('seller'), 
+    isStoreApproved, 
+    getMyProducts
+);
+
+// Route untuk mengedit produk
+router.put('/:id', 
+    authenticate, 
+    authorize('seller'), 
+    isStoreApproved, // Middleware ini yang mengisi req.store
+    uploadProductPhotos.array('photos', 3), // Middleware untuk handle file/gambar
+    updateProduct
+);
+
+// Route untuk menghapus produk
+router.delete('/:id', deleteProduct); 
+
+//Route untuk seller melakukan bulk-upload
+router.post('/bulk', authenticate, authorize('seller'), isStoreApproved, bulkCreateProducts);
 
 // Route GET: Ambil Semua Produk (INI YANG TADI ILANG)
 router.get('/', getProducts);

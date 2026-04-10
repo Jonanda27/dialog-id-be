@@ -102,3 +102,11 @@ export const getUserProfile = async (userId) => {
 
     return user;
 };
+
+export const logoutUser = async () => {
+    // Untuk autentikasi stateless JWT, kita cukup memberikan sinyal sukses.
+    // Ke depannya, jika menggunakan Redis untuk blacklist token, logika ditambahkan di sini.
+    return {
+        message: 'Sesi telah diakhiri secara sistem.'
+    };
+};

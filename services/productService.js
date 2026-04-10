@@ -1,66 +1,46 @@
 import db from '../models/index.js';
+import models, { sequelize } from '../models/index.js';
 
-class ProductService {
-    /**
-     * Membuat produk baru beserta medianya (gambar) dalam satu transaksi atomic.
-     * Jika insert gambar gagal, data produk akan dibatalkan (rollback).
-     *
-     * @param {string} storeId - ID Toko (didapat dari req.store.id)
-     * @param {Object} productData - Data produk matang (lolos validasi Zod)
-     * @param {Array} files - Array objek file hasil parsing Multer
-     * @returns {Promise<Object>} Entitas produk lengkap beserta fotonya
-     */
-    static async createProduct(storeId, productData, files) {
-        // Memulai Database Transaction
-        const t = await db.sequelize.transaction();
+export const createProduct = async (storeId, productData, files) => {
+    // 1. Memulai Database Transaction menggunakan instance sequelize langsung
+    const t = await sequelize.transaction();
 
-        try {
-            // 1. Buat record Produk Utama
-            // Kita menggunakan spread operator (...) karena productData sudah bersih dari validasi
-            const product = await db.Product.create({
-                store_id: storeId,
-                ...productData
-            }, { transaction: t });
+    try {
+        // 1. Buat record Produk Utama
+        const product = await db.Product.create({
+            store_id: storeId,
+            ...productData
+        }, { transaction: t });
 
-            // 2. Jika ada file yang diunggah, simpan ke tabel ProductMedia
-            if (files && files.length > 0) {
-                const mediaRecords = files.map((file, index) => ({
-                    product_id: product.id,
-                    // Menghilangkan '/public' agar sejalan dengan express.static('public')
-                    // Path di DB menjadi: /uploads/products/nama-file.png
-                    media_url: `/uploads/products/${file.filename}`,
-                    is_primary: index === 0 // Foto pertama (index 0) otomatis jadi primary/thumbnail
-                }));
+        // 2. Jika ada file yang diunggah, simpan ke tabel ProductMedia
+        if (files && files.length > 0) {
+            const mediaRecords = files.map((file, index) => ({
+                product_id: product.id,
+                media_url: `/public/uploads/products/${file.filename}`,
+                is_primary: index === 0 // Foto pertama otomatis jadi primary
+            }));
 
-                // Bulk insert untuk performa O(1) query yang lebih cepat
-                await db.ProductMedia.bulkCreate(mediaRecords, { transaction: t });
-            }
-
-            // 3. Commit transaksi jika semua sukses
-            await t.commit();
-
-            // 4. Return produk beserta fotonya menggunakan method dari class yang sama
-            return await this.getProductDetails(product.id);
-
-        } catch (error) {
-            // Rollback jika terjadi error (data produk dan gambar dibatalkan bersamaan)
-            await t.rollback();
-            throw error;
+            // Bulk insert untuk performa lebih cepat
+            await db.ProductMedia.bulkCreate(mediaRecords, { transaction: t });
         }
-    }
 
-    /**
-     * Mengambil semua produk dengan filter dinamis.
-     * Digunakan untuk halaman katalog atau pencarian.
-     *
-     * @param {Object} filters - Kriteria filter (format, grading, dll)
-     * @returns {Promise<Array>} Daftar produk
-     */
-    static async getAllProducts(filters = {}) {
-        // Basic filtering criteria
-        const whereClause = {};
-        if (filters.format) whereClause.format = filters.format;
-        if (filters.grading) whereClause.grading = filters.grading;
+        // 3. Commit transaksi jika semua sukses
+        await t.commit();
+
+        // 4. Return produk beserta fotonya
+        return await getProductDetails(product.id);
+    } catch (error) {
+        // Rollback jika terjadi error (data produk tidak akan tersimpan jika foto gagal)
+        await t.rollback();
+        throw error;
+    }
+};
+
+export const getAllProducts = async (filters = {}) => {
+    // Basic filtering criteria
+    const whereClause = { is_active: true };
+    if (filters.format) whereClause.format = filters.format;
+    if (filters.grading) whereClause.grading = filters.grading;
 
         const products = await db.Product.findAll({
             where: whereClause,
@@ -111,8 +91,5 @@ class ProductService {
             throw error;
         }
 
-        return product;
-    }
-}
-
-export default ProductService;
+    return product;
+};
