@@ -2,18 +2,29 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
 import ProductService from '../services/productService.js';
 
-export const createProduct = asyncHandler(async (req, res) => {
-    // 1. Ekstraksi Context: req.store di-inject secara aman oleh middleware Fase A
-    const storeId = req.store.id;
+/**
+ * Mendapatkan Detail Produk (Public/PDP)
+ * Digunakan untuk menampilkan informasi lengkap produk kepada Buyer
+ */
+export const getDetail = asyncHandler(async (req, res) => {
+    const productId = req.params.id;
 
-    // 2. Ekstraksi Payload: multipart/form-data memisahkan teks dan biner
-    // Analisis Tipe Data: property price, stock, dan release_year di dalam req.body 
-    // akan terdeteksi sebagai tipe 'string'. Pastikan DTO/Validator (seperti Zod/Joi) 
-    // melakukan casting ke 'number' sebelum masuk ke productService.
+    // Delegasi ke Service Layer untuk pengambilan data & join tabel (Media, Store, Metadata)
+    const result = await ProductService.getProductDetail(productId);
+
+    return successResponse(
+        res,
+        200,
+        'Berhasil mengambil detail produk',
+        result
+    );
+});
+
+export const createProduct = asyncHandler(async (req, res) => {
+    const storeId = req.store.id;
     const productData = req.body;
     const files = req.files;
 
-    // 3. Delegasi (Controller Pattern): Menyerahkan orkestrasi ke layer Service
     const result = await ProductService.createProduct(storeId, productData, files);
 
     return successResponse(
@@ -24,11 +35,9 @@ export const createProduct = asyncHandler(async (req, res) => {
     );
 });
 
-// 1. Update Produk
 export const updateProduct = asyncHandler(async (req, res) => {
     const productId = req.params.id;
 
-    // Pastikan req.store ada (disuntikkan oleh middleware isStoreApproved)
     if (!req.store || !req.store.id) {
         return res.status(401).json({
             success: false,
@@ -38,15 +47,13 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
     const storeId = req.store.id;
     const updateData = req.body;
-    const files = req.files; // Jika ada upload foto baru
+    const files = req.files;
 
-    // Kirim ke service
-    const result = await productService.updateProduct(productId, storeId, updateData, files);
+    const result = await ProductService.updateProduct(productId, storeId, updateData, files);
 
     return successResponse(res, 200, 'Produk berhasil diperbarui', result);
 });
 
-// 2. Delete Produk
 export const deleteProduct = asyncHandler(async (req, res) => {
     const productId = req.params.id;
     const storeId = req.store.id;
@@ -57,35 +64,50 @@ export const deleteProduct = asyncHandler(async (req, res) => {
 });
 
 export const getProducts = asyncHandler(async (req, res) => {
+    const standardKeys = ['sub_category_id', 'name', 'min_price', 'max_price', 'page', 'limit'];
+
     const filters = {
-        format: req.query.format,
-        grading: req.query.grading
+        standard: {},
+        dynamic: {}
     };
 
-    const result = await ProductService.getAllProducts(filters);
-    return successResponse(res, 200, 'Berhasil mengambil daftar produk', result);
-});
+    for (const key in req.query) {
+        if (standardKeys.includes(key)) {
+            filters.standard[key] = req.query[key];
+        } else {
+            filters.dynamic[key] = req.query[key];
+        }
+    }
 
-export const getDetail = asyncHandler(async (req, res) => {
-    const result = await ProductService.getProductDetails(req.params.id);
-    return successResponse(res, 200, 'Berhasil mengambil detail produk', result);
+    const result = await ProductService.getAllProducts(filters);
+    return successResponse(res, 200, 'Berhasil mengambil daftar katalog produk', result);
 });
 
 export const getMyProducts = asyncHandler(async (req, res) => {
-    const storeId = req.store.id; 
+    const storeId = req.store.id;
+    const standardKeys = ['sub_category_id', 'name', 'min_price', 'max_price', 'page', 'limit'];
+
     const filters = {
-        format: req.query.format,
-        grading: req.query.grading
+        standard: {},
+        dynamic: {}
     };
-    const result = await productService.getProductsByStore(storeId, filters);
+
+    for (const key in req.query) {
+        if (standardKeys.includes(key)) {
+            filters.standard[key] = req.query[key];
+        } else {
+            filters.dynamic[key] = req.query[key];
+        }
+    }
+
+    const result = await ProductService.getProductsByStore(storeId, filters);
     return successResponse(res, 200, 'Berhasil mengambil produk toko Anda', result);
 });
 
 export const bulkCreateProducts = asyncHandler(async (req, res) => {
-    const products = req.body; // Array produk dari frontend
+    const products = req.body;
     const storeId = req.store.id;
 
-    // Tambahkan store_id ke setiap objek produk
     const preparedData = products.map(p => ({
         ...p,
         store_id: storeId,

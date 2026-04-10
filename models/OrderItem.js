@@ -15,5 +15,11 @@ export default class OrderItem extends Model {
     static associate(models) {
         this.belongsTo(models.Order, { foreignKey: 'order_id', as: 'order' });
         this.belongsTo(models.Product, { foreignKey: 'product_id', as: 'product' });
+
+        // --- RELASI BARU & KRUSIAL ---
+        // hasOne: Memastikan di level ORM bahwa 1 OrderItem eksklusif hanya untuk 1 Review
+        if (models.Review) {
+            this.hasOne(models.Review, { foreignKey: 'order_item_id', as: 'review' });
+        }
     }
 }
