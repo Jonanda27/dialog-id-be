@@ -41,7 +41,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
     const files = req.files; // Jika ada upload foto baru
 
     // Kirim ke service
-    const result = await productService.updateProduct(productId, storeId, updateData, files);
+    const result = await ProductService.updateProduct(productId, storeId, updateData, files);
 
     return successResponse(res, 200, 'Produk berhasil diperbarui', result);
 });
@@ -51,7 +51,7 @@ export const deleteProduct = asyncHandler(async (req, res) => {
     const productId = req.params.id;
     const storeId = req.store.id;
 
-    await productService.deleteProduct(productId, storeId);
+    await ProductService.deleteProduct(productId, storeId);
 
     return successResponse(res, 200, 'Produk berhasil dihapus dari katalog');
 });
@@ -77,7 +77,7 @@ export const getMyProducts = asyncHandler(async (req, res) => {
         format: req.query.format,
         grading: req.query.grading
     };
-    const result = await productService.getProductsByStore(storeId, filters);
+    const result = await ProductService.getProductsByStore(storeId, filters);
     return successResponse(res, 200, 'Berhasil mengambil produk toko Anda', result);
 });
 
@@ -94,6 +94,6 @@ export const bulkCreateProducts = asyncHandler(async (req, res) => {
         release_year: Number(p.release_year)
     }));
 
-    const result = await productService.bulkCreateProducts(preparedData);
+    const result = await ProductService.bulkCreateProducts(preparedData);
     return successResponse(res, 201, `${result.length} Produk berhasil diimport`, result);
 });
