@@ -1,18 +1,61 @@
 import express from 'express';
-import { checkout } from '../controllers/orderController.js';
+import { checkout, ship, complete, calculateShipping } from '../controllers/orderController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { checkoutSchema } from '../validations/orderValidation.js';
-import { ship, complete } from '../controllers/orderController.js';
 
 const router = express.Router();
+
+/**
+ * @swagger
+ * /api/orders/shipping-cost:
+ *   post:
+ *     summary: Kalkulasi ongkos kirim (Role Buyer)
+ *     description: Mengambil opsi kurir dan harga berdasarkan origin, destination, dan berat.
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - origin
+ *               - destination
+ *               - weight
+ *             properties:
+ *               origin:
+ *                 type: string
+ *                 example: "KOTA-123"
+ *               destination:
+ *                 type: string
+ *                 example: "KOTA-456"
+ *               weight:
+ *                 type: integer
+ *                 description: Total berat dalam gram
+ *                 example: 1500
+ *     responses:
+ *       200:
+ *         description: Berhasil memuat opsi pengiriman
+ *       400:
+ *         description: Data origin, destination, atau weight tidak lengkap (Bad Request)
+ *       401:
+ *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
+ *       403:
+ *         description: Akses ditolak, hanya untuk Buyer (Forbidden)
+ *       404:
+ *         description: Lokasi atau kurir tidak tersedia (Not Found)
+ */
+router.post('/shipping-cost', authenticate, authorize('buyer'), calculateShipping);
 
 /**
  * @swagger
  * /api/orders/checkout:
  *   post:
  *     summary: Melakukan checkout produk (Role Buyer)
- *     description: Memproses keranjang belanja, memvalidasi stok (pessimistic lock), menerapkan biaya grading (jika ada req grading yg terpenuhi), mengurangi stok produk, dan mencatat Escrow.
+ *     description: Memproses keranjang belanja, memvalidasi stok (pessimistic lock), menerapkan biaya grading, mengurangi stok produk, dan mencatat Escrow.
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -44,9 +87,13 @@ const router = express.Router();
  *       201:
  *         description: Transaksi berhasil dibuat
  *       400:
- *         description: Stok tidak cukup atau keranjang beda toko
+ *         description: Stok tidak cukup atau keranjang beda toko (Bad Request)
  *       401:
- *         description: Tidak terautentikasi
+ *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
+ *       403:
+ *         description: Akses ditolak, hanya untuk Buyer (Forbidden)
+ *       404:
+ *         description: Salah satu produk tidak ditemukan (Not Found)
  */
 router.post(
     '/checkout',
@@ -93,7 +140,7 @@ router.post(
  *       403:
  *         description: Akses ditolak, bukan pesanan dari toko ini (Forbidden)
  *       404:
- *         description: Pesanan tidak ditemukan
+ *         description: Pesanan tidak ditemukan (Not Found)
  */
 router.patch('/:id/ship', authenticate, authorize('seller'), ship);
 
@@ -102,7 +149,7 @@ router.patch('/:id/ship', authenticate, authorize('seller'), ship);
  * /api/orders/{id}/complete:
  *   post:
  *     summary: Buyer mengonfirmasi pesanan diterima (Pelepasan Dana Escrow)
- *     description: Mengubah status order menjadi completed, status escrow menjadi released, memotong admin fee 3%, dan menambah saldo (CREDIT) ke Wallet toko. Diperlukan Database Transaction.
+ *     description: Mengubah status order menjadi completed, status escrow menjadi released, memotong admin fee 3%, dan menambah saldo ke Wallet toko.
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -123,7 +170,7 @@ router.patch('/:id/ship', authenticate, authorize('seller'), ship);
  *       403:
  *         description: Bukan pembeli dari pesanan ini (Forbidden)
  *       404:
- *         description: Pesanan tidak ditemukan
+ *         description: Pesanan tidak ditemukan (Not Found)
  */
 router.post('/:id/complete', authenticate, authorize('buyer'), complete);
 

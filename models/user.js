@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 
 export default class User extends Model {
   static init(sequelize) {
+    // Kita memanggil super.init (static method dari Sequelize Model)
     return super.init({
       id: {
         type: DataTypes.UUID,
@@ -13,9 +14,7 @@ export default class User extends Model {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true,
-        validate: {
-          isEmail: true,
-        }
+        validate: { isEmail: true }
       },
       password: {
         type: DataTypes.STRING,
@@ -33,7 +32,7 @@ export default class User extends Model {
       sequelize,
       tableName: 'users',
       modelName: 'User',
-      underscored: true, // Mengubah camelCase di JS menjadi snake_case di DB (created_at)
+      underscored: true,
       hooks: {
         beforeCreate: async (user) => {
           if (user.password) {
@@ -52,22 +51,13 @@ export default class User extends Model {
   }
 
   static associate(models) {
-    // Relasi One-to-One
-    this.hasOne(models.Store, {
-      foreignKey: 'user_id',
-      as: 'store'
-    });
-    this.hasMany(models.Order, {
-      foreignKey: 'buyer_id',
-      as: 'buyerOrders' 
-    });
+    this.hasOne(models.Store, { foreignKey: 'user_id', as: 'store' });
+    this.hasMany(models.Order, { foreignKey: 'buyer_id', as: 'buyerOrders' });
+    if (models.Review) {
+      this.hasMany(models.Review, { foreignKey: 'user_id', as: 'reviews' });
+    }
   }
 
-  /**
-   * Helper method untuk membandingkan password saat login
-   * @param {string} candidatePassword - Password plain text dari request
-   * @returns {Promise<boolean>}
-   */
   async comparePassword(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
   }
