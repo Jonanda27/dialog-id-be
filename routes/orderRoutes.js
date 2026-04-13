@@ -1,9 +1,9 @@
 import express from 'express';
-import { checkout, ship, complete, calculateShipping } from '../controllers/orderController.js';
-import { checkout, getStoreOrders } from '../controllers/orderController.js';
+import { checkout, ship, complete, calculateShipping, getStoreOrders } from '../controllers/orderController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { checkoutSchema } from '../validations/orderValidation.js';
+import { isStoreApproved } from '../middlewares/auth.js';
 
 const router = express.Router();
 
