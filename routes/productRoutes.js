@@ -91,6 +91,35 @@ router.get(
     getMyProducts
 );
 
+
+
+// Route untuk menghapus produk
+router.delete('/:id', deleteProduct); 
+
+//Route untuk seller melakukan bulk-upload
+router.post('/bulk', authenticate, authorize('seller'), isStoreApproved, bulkCreateProducts);
+
+/**
+ * @swagger
+ * /api/products/{id}:
+ *   get:
+ *     summary: Mendapatkan detail produk beserta semua fotonya
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Detail produk ditemukan
+ *       404:
+ *         description: Produk tidak ditemukan
+ */
+router.get('/:id', getDetail);
+
 // Route untuk mengedit produk
 router.put('/:id', 
     authenticate, 
@@ -100,11 +129,6 @@ router.put('/:id',
     updateProduct
 );
 
-// Route untuk menghapus produk
-router.delete('/:id', deleteProduct); 
-
-//Route untuk seller melakukan bulk-upload
-router.post('/bulk', authenticate, authorize('seller'), isStoreApproved, bulkCreateProducts);
 
 // Route GET: Ambil Semua Produk (INI YANG TADI ILANG)
 router.get('/', getProducts);

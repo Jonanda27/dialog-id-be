@@ -122,3 +122,27 @@ export const getAllStores = asyncHandler(async (req, res) => {
         stores
     );
 });
+
+/**
+ * @desc    Mendapatkan detail satu toko berdasarkan ID (Public)
+ * @route   GET /api/stores/:id
+ * @access  Public
+ */
+export const getStoreById = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    // Memanggil service untuk mencari toko berdasarkan ID (UUID)
+    const store = await StoreService.findById(id);
+
+    if (!store) {
+        return errorResponse(res, 404, `Toko dengan ID ${id} tidak ditemukan.`);
+    }
+
+    // Mengembalikan data toko
+    return successResponse(
+        res, 
+        200, 
+        'Berhasil memuat detail toko.', 
+        store
+    );
+});

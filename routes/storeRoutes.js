@@ -5,7 +5,8 @@ import {
     getWallet,
     getMyStore,
     updateStore,
-    getAllStores
+    getAllStores,
+    getStoreById
 } from '../controllers/storeController.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { registerStoreSchema } from '../validations/storeValidation.js';
@@ -55,6 +56,8 @@ router.put('/update',
  * @note    Diletakkan di paling atas agar tidak bentrok dengan route spesifik
  */
 router.get('/', getAllStores);
+
+router.get('/:id', getStoreById);
 
 /**
  * Route: GET /api/stores/wallet

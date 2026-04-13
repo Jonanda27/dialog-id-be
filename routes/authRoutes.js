@@ -37,16 +37,20 @@ router.get('/me', authenticate, getMe);
 /**
  * @swagger
  * /api/auth/logout:
- * post:
- * summary: Logout user dan mengakhiri sesi
- * tags: [Auth]
- * security:
- * - bearerAuth: []
- * responses:
- * 200:
- * description: Logout berhasil
- * 401:
- * description: Tidak terautentikasi
+ *   post:
+ *     summary: Logout user dan mengakhiri sesi
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout berhasil dan sesi diakhiri
+ *       401:
+ *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
+ *       403:
+ *         description: Akses dilarang (Forbidden)
+ *       404:
+ *         description: Resource tidak ditemukan (Not Found)
  */
 router.post('/logout', authenticate, logout);
 

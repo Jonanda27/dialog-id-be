@@ -22,39 +22,21 @@ export const getDetail = asyncHandler(async (req, res) => {
 });
 
 export const createProduct = asyncHandler(async (req, res) => {
-    // 1. Ekstraksi Context
     const storeId = req.store.id;
-
-    // 2. Ekstraksi Payload (Gunakan spread operator agar bisa dimodifikasi)
     const productData = { ...req.body };
-    const files = req.files;
+    
+    // Multer .array() meletakkan file di req.files
+    const files = req.files; 
 
-    // --- PERBAIKAN UTAMA DI SINI ---
-    // FormData mengirim objek sebagai string. Kita WAJIB mengubahnya kembali 
-    // menjadi Object JSON murni sebelum dilempar ke Service & Sequelize.
+    // Parsing metadata jika string
     if (productData.metadata && typeof productData.metadata === 'string') {
-        try {
-            productData.metadata = JSON.parse(productData.metadata);
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                message: "Format JSON pada metadata tidak valid.",
-                errors: [{ field: "metadata", message: "Gagal mem-parsing string metadata." }]
-            });
-        }
+        productData.metadata = JSON.parse(productData.metadata);
     }
-    // --------------------------------
 
-    // 3. Delegasi ke layer Service
-    // Sekarang productData.metadata sudah berbentuk Object, Sequelize pasti menerima!
+    // Kirim 'files' ke service
     const result = await ProductService.createProduct(storeId, productData, files);
 
-    return successResponse(
-        res,
-        201,
-        'Produk berhasil ditambahkan ke katalog',
-        result
-    );
+    return successResponse(res, 201, 'Produk berhasil ditambahkan', result);
 });
 
 export const updateProduct = asyncHandler(async (req, res) => {
@@ -68,25 +50,22 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
 
     const storeId = req.store.id;
-    const updateData = { ...req.body }; // Gunakan spread operator
-    const files = req.files;
+    const updateData = { ...req.body };
+    const files = req.files; // Ini adalah array dari Multer
 
-    // --- PENCEGAHAN BUG PROAKTIF ---
-    // Terapkan parsing metadata yang sama seperti pada createProduct 
-    // karena update juga menggunakan mekanisme FormData.
+    // Parsing metadata JSONB dari FormData
     if (updateData.metadata && typeof updateData.metadata === 'string') {
         try {
             updateData.metadata = JSON.parse(updateData.metadata);
         } catch (error) {
             return res.status(400).json({
                 success: false,
-                message: "Format JSON pada metadata tidak valid.",
-                errors: [{ field: "metadata", message: "Gagal mem-parsing string metadata." }]
+                message: "Format JSON pada metadata tidak valid."
             });
         }
     }
-    // --------------------------------
 
+    // Kirim files ke Service
     const result = await ProductService.updateProduct(productId, storeId, updateData, files);
 
     return successResponse(res, 200, 'Produk berhasil diperbarui', result);
@@ -102,7 +81,16 @@ export const deleteProduct = asyncHandler(async (req, res) => {
 });
 
 export const getProducts = asyncHandler(async (req, res) => {
-    const standardKeys = ['sub_category_id', 'name', 'min_price', 'max_price', 'page', 'limit'];
+    // Tambahkan 'store_id' ke dalam standardKeys agar bisa difilter secara publik
+    const standardKeys = [
+        'store_id', 
+        'sub_category_id', 
+        'name', 
+        'min_price', 
+        'max_price', 
+        'page', 
+        'limit'
+    ];
 
     const filters = {
         standard: {},

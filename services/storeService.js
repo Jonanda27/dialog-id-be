@@ -1,6 +1,7 @@
 // File: dialog-id-be/services/storeService.js
 import db from "../models/index.js";
 import Store from "../models/Store.js";
+import { Op } from 'sequelize';
 
 class StoreService {
   /**
@@ -139,7 +140,7 @@ class StoreService {
  */
 static async findAllStores(filters) {
     const { status, search } = filters;
-    const { Op } = db.Sequelize;
+    
 
     const whereClause = {};
     
@@ -179,6 +180,24 @@ static async findAllStores(filters) {
         order: [['createdAt', 'DESC']]
     });
 }
+static async findById(id) {
+    return await db.Store.findByPk(id, {
+        attributes: [
+            'id', 'name', 'description', 'logo_url', 'banner_url', 
+            'status', 'working_days', 'working_hours', 'social_links',
+            'created_at' 
+        ],
+        include: [
+            {
+                model: db.User,
+                as: 'owner',
+                // Coba tulis atribut secara eksplisit dalam nested array jika name bermasalah
+                attributes: ['full_name'], 
+            }
+        ]
+    });
+}
+
 }
 
 

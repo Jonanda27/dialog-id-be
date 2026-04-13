@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
-import * as orderService from '../services/orderService.js';
+import orderService from '../services/orderService.js';
 
 import ShippingService from '../services/shippingService.js';
 
@@ -36,7 +36,7 @@ export const getStoreOrders = asyncHandler(async (req, res) => {
     const storeId = req.store.id;
     const statusFilter = req.query.status;
 
-    const result = await OrderService.getStoreOrders(storeId, statusFilter);
+    const result = await orderService.getStoreOrders(storeId, statusFilter);
     return successResponse(res, 200, 'Berhasil memuat daftar pesanan.', result);
 });
 
@@ -50,7 +50,7 @@ export const ship = asyncHandler(async (req, res) => {
         return res.status(400).json({ success: false, message: 'Resi pengiriman wajib diisi.' });
     }
 
-    const result = await OrderService.shipOrder(orderId, storeId, tracking_number);
+    const result = await orderService.shipOrder(orderId, storeId, tracking_number);
     return successResponse(res, 200, 'Pesanan berhasil dikirim dan resi tersimpan.', result);
 });
 
