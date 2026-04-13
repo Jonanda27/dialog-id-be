@@ -1,5 +1,6 @@
 import express from 'express';
-import { checkout, getStoreOrders } from '../controllers/orderController.js';
+import { checkout, getStoreOrders, calculateShipping } from '../controllers/orderController.js';
+import { isStoreApproved } from '../middlewares/store.js'; 
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { checkoutSchema } from '../validations/orderValidation.js';

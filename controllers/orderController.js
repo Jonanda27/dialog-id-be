@@ -37,7 +37,7 @@ export const getStoreOrders = asyncHandler(async (req, res) => {
     const storeId = req.store.id;
     const statusFilter = req.query.status;
 
-    const result = await orderService.getStoreOrders(storeId, statusFilter);
+    const result = await OrderService.getStoreOrders(storeId, statusFilter);
     return successResponse(res, 200, 'Berhasil memuat daftar pesanan.', result);
 });
 

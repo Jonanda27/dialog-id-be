@@ -133,6 +133,54 @@ class StoreService {
 
     return await store.update(updatedFields);
   }
+
+  /**
+ * Mengambil semua data toko dengan filter opsional
+ */
+static async findAllStores(filters) {
+    const { status, search } = filters;
+    const { Op } = db.Sequelize;
+
+    const whereClause = {};
+    
+    // Filter berdasarkan status toko
+    if (status) {
+        whereClause.status = status;
+    }
+
+    // Filter berdasarkan nama toko (pencarian)
+    if (search) {
+        whereClause.name = {
+            [Op.iLike]: `%${search}%` // Case-insensitive search untuk PostgreSQL
+        };
+    }
+
+    return await db.Store.findAll({
+        where: whereClause,
+        attributes: [
+            'id', 
+            'name', 
+            'description', 
+            'logo_url', 
+            'banner_url', 
+            'status', 
+            'working_days', 
+            'working_hours', 
+            'createdAt'
+        ],
+        // Kita juga bisa menyertakan jumlah produk yang dimiliki toko tersebut
+        include: [
+            {
+                model: db.Product,
+                as: 'products',
+                attributes: ['id']
+            }
+        ],
+        order: [['createdAt', 'DESC']]
+    });
 }
+}
+
+
 
 export default StoreService;

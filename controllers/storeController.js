@@ -99,3 +99,26 @@ export const getWallet = asyncHandler(async (req, res) => {
         result
     );
 });
+
+/**
+ * @desc    Mendapatkan semua daftar toko (Eksplorasi)
+ * @route   GET /api/stores
+ * @access  Public
+ */
+export const getAllStores = asyncHandler(async (req, res) => {
+    // Kita bisa menambahkan fitur filter status (hanya toko yang sudah diverifikasi)
+    // atau filter pencarian berdasarkan nama melalui query params
+    const filters = {
+        status: req.query.status || 'approved', // Default hanya tampilkan toko yang sudah aktif
+        search: req.query.search || ''
+    };
+
+    const stores = await StoreService.findAllStores(filters);
+
+    return successResponse(
+        res, 
+        200, 
+        'Berhasil memuat daftar semua toko.', 
+        stores
+    );
+});

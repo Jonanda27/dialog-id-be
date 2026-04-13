@@ -4,8 +4,8 @@ import dbConfig from '../config/database.cjs';
 // Import Models
 import User from './User.js'; // User adalah Class
 import Store from './Store.js';
-import CategoryInit from './Category.js';
-import SubCategoryInit from './SubCategory.js';
+import Category from './Category.js';
+import SubCategory from './SubCategory.js';
 import Product from './Product.js';
 import ProductMedia from './ProductMedia.js';
 import Order from './Order.js';
@@ -37,8 +37,8 @@ const models = {
 
   // Model lainnya menggunakan functional pattern (sequelize) => Model
   Store: Store.init(sequelize),
-  Category: CategoryInit(sequelize),
-  SubCategory: SubCategoryInit(sequelize),
+ Category: Category.init(sequelize), 
+  SubCategory: SubCategory.init(sequelize),
   Product: Product.init(sequelize),
   ProductMedia: ProductMedia.init(sequelize),
   Order: Order.init(sequelize),
