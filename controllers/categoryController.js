@@ -1,8 +1,6 @@
 import models from '../models/index.js';
-// ⚡ PERBAIKAN 1: Gunakan Named Import (kurung kurawal) untuk asyncHandler
-import { asyncHandler } from '../utils/asyncHandler.js';
-// ⚡ PERBAIKAN 2: Pastikan konsistensi dengan utils/apiResponse.js
-import { successResponse, errorResponse } from '../utils/apiResponse.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import apiResponse from '../utils/apiResponse.js';
 
 /**
  * @desc    Mengambil seluruh data kategori induk beserta sub-kategorinya.
@@ -27,12 +25,11 @@ export const getAllCategories = asyncHandler(async (req, res) => {
         ]
     });
 
-    // Menggunakan successResponse yang sudah di-import di atas
-    return successResponse(res, 200, 'Berhasil mengambil data struktur kategori', categories);
+    return apiResponse.success(res, 'Berhasil mengambil data struktur kategori', categories);
 });
 
 /**
- * @desc    Mengambil satu kategori spesifik berdasarkan slug.
+ * @desc    Mengambil satu kategori spesifik berdasarkan slug (Opsional tapi berguna).
  * @route   GET /api/categories/:slug
  * @access  Public
  */
@@ -52,8 +49,8 @@ export const getCategoryBySlug = asyncHandler(async (req, res) => {
     });
 
     if (!category) {
-        return errorResponse(res, 404, 'Kategori tidak ditemukan');
+        return apiResponse.notFound(res, 'Kategori tidak ditemukan');
     }
 
-    return successResponse(res, 200, 'Berhasil mengambil detail kategori', category);
+    return apiResponse.success(res, 'Berhasil mengambil detail kategori', category);
 });

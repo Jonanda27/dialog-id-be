@@ -10,7 +10,8 @@ export const getDetail = asyncHandler(async (req, res) => {
     const productId = req.params.id;
 
     // Delegasi ke Service Layer untuk pengambilan data & join tabel (Media, Store, Metadata)
-    const result = await ProductService.getProductDetail(productId);
+    // Diperbarui menjadi getProductDetails (sinkron dengan nama fungsi di ProductService)
+    const result = await ProductService.getProductDetails(productId);
 
     return successResponse(
         res,
@@ -67,8 +68,24 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
 
     const storeId = req.store.id;
-    const updateData = req.body;
+    const updateData = { ...req.body }; // Gunakan spread operator
     const files = req.files;
+
+    // --- PENCEGAHAN BUG PROAKTIF ---
+    // Terapkan parsing metadata yang sama seperti pada createProduct 
+    // karena update juga menggunakan mekanisme FormData.
+    if (updateData.metadata && typeof updateData.metadata === 'string') {
+        try {
+            updateData.metadata = JSON.parse(updateData.metadata);
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                message: "Format JSON pada metadata tidak valid.",
+                errors: [{ field: "metadata", message: "Gagal mem-parsing string metadata." }]
+            });
+        }
+    }
+    // --------------------------------
 
     const result = await ProductService.updateProduct(productId, storeId, updateData, files);
 

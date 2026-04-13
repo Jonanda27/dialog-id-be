@@ -6,65 +6,11 @@ import { authenticate, authorize } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-/**
- * @swagger
- * /api/auth/register:
- *   post:
- *     summary: Registrasi user baru
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - email
- *               - password
- *             properties:
- *               name:
- *                 type: string
- *               email:
- *                 type: string
- *               password:
- *                 type: string
- *     responses:
- *       201:
- *         description: User berhasil didaftarkan
- *       400:
- *         description: Data tidak valid atau email sudah terdaftar (Bad Request)
- */
+// Route: POST /api/auth/register
+// Middleware 1: Validasi Zod -> Middleware 2: Controller logic
 router.post('/register', validateRequest(registerSchema), register);
 
-/**
- * @swagger
- * /api/auth/login:
- *   post:
- *     summary: Login user untuk mendapatkan token
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *               password:
- *                 type: string
- *     responses:
- *       200:
- *         description: Login berhasil, mengembalikan token JWT
- *       400:
- *         description: Email atau password salah (Bad Request)
- *       401:
- *         description: Autentikasi gagal (Unauthorized)
- */
+// Route: POST /api/auth/login
 router.post('/login', validateRequest(loginSchema), login);
 
 /**
@@ -91,18 +37,16 @@ router.get('/me', authenticate, getMe);
 /**
  * @swagger
  * /api/auth/logout:
- *   post:
- *     summary: Logout user dan mengakhiri sesi
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Logout berhasil
- *       401:
- *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
- *       403:
- *         description: Akses dilarang (Forbidden)
+ * post:
+ * summary: Logout user dan mengakhiri sesi
+ * tags: [Auth]
+ * security:
+ * - bearerAuth: []
+ * responses:
+ * 200:
+ * description: Logout berhasil
+ * 401:
+ * description: Tidak terautentikasi
  */
 router.post('/logout', authenticate, logout);
 
