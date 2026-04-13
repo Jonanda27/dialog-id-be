@@ -1,4 +1,5 @@
-import { Model, DataTypes } from 'sequelize';
+'use strict';
+const { Model, DataTypes } = require('sequelize');
 
 class SubCategory extends Model {
     /**

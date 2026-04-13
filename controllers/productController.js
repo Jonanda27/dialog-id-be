@@ -2,6 +2,24 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
 import ProductService from '../services/productService.js';
 
+/**
+ * Mendapatkan Detail Produk (Public/PDP)
+ * Digunakan untuk menampilkan informasi lengkap produk kepada Buyer
+ */
+export const getDetail = asyncHandler(async (req, res) => {
+    const productId = req.params.id;
+
+    // Delegasi ke Service Layer untuk pengambilan data & join tabel (Media, Store, Metadata)
+    const result = await ProductService.getProductDetail(productId);
+
+    return successResponse(
+        res,
+        200,
+        'Berhasil mengambil detail produk',
+        result
+    );
+});
+
 export const createProduct = asyncHandler(async (req, res) => {
     // 1. Ekstraksi Context
     const storeId = req.store.id;
@@ -38,11 +56,9 @@ export const createProduct = asyncHandler(async (req, res) => {
     );
 });
 
-// 1. Update Produk
 export const updateProduct = asyncHandler(async (req, res) => {
     const productId = req.params.id;
 
-    // Pastikan req.store ada (disuntikkan oleh middleware isStoreApproved)
     if (!req.store || !req.store.id) {
         return res.status(401).json({
             success: false,
@@ -52,15 +68,13 @@ export const updateProduct = asyncHandler(async (req, res) => {
 
     const storeId = req.store.id;
     const updateData = req.body;
-    const files = req.files; // Jika ada upload foto baru
+    const files = req.files;
 
-    // Kirim ke service
     const result = await ProductService.updateProduct(productId, storeId, updateData, files);
 
     return successResponse(res, 200, 'Produk berhasil diperbarui', result);
 });
 
-// 2. Delete Produk
 export const deleteProduct = asyncHandler(async (req, res) => {
     const productId = req.params.id;
     const storeId = req.store.id;
@@ -71,35 +85,50 @@ export const deleteProduct = asyncHandler(async (req, res) => {
 });
 
 export const getProducts = asyncHandler(async (req, res) => {
+    const standardKeys = ['sub_category_id', 'name', 'min_price', 'max_price', 'page', 'limit'];
+
     const filters = {
-        format: req.query.format,
-        grading: req.query.grading
+        standard: {},
+        dynamic: {}
     };
 
-    const result = await ProductService.getAllProducts(filters);
-    return successResponse(res, 200, 'Berhasil mengambil daftar produk', result);
-});
+    for (const key in req.query) {
+        if (standardKeys.includes(key)) {
+            filters.standard[key] = req.query[key];
+        } else {
+            filters.dynamic[key] = req.query[key];
+        }
+    }
 
-export const getDetail = asyncHandler(async (req, res) => {
-    const result = await ProductService.getProductDetails(req.params.id);
-    return successResponse(res, 200, 'Berhasil mengambil detail produk', result);
+    const result = await ProductService.getAllProducts(filters);
+    return successResponse(res, 200, 'Berhasil mengambil daftar katalog produk', result);
 });
 
 export const getMyProducts = asyncHandler(async (req, res) => {
-    const storeId = req.store.id; 
+    const storeId = req.store.id;
+    const standardKeys = ['sub_category_id', 'name', 'min_price', 'max_price', 'page', 'limit'];
+
     const filters = {
-        format: req.query.format,
-        grading: req.query.grading
+        standard: {},
+        dynamic: {}
     };
+
+    for (const key in req.query) {
+        if (standardKeys.includes(key)) {
+            filters.standard[key] = req.query[key];
+        } else {
+            filters.dynamic[key] = req.query[key];
+        }
+    }
+
     const result = await ProductService.getProductsByStore(storeId, filters);
     return successResponse(res, 200, 'Berhasil mengambil produk toko Anda', result);
 });
 
 export const bulkCreateProducts = asyncHandler(async (req, res) => {
-    const products = req.body; // Array produk dari frontend
+    const products = req.body;
     const storeId = req.store.id;
 
-    // Tambahkan store_id ke setiap objek produk
     const preparedData = products.map(p => ({
         ...p,
         store_id: storeId,
