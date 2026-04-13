@@ -51,8 +51,8 @@ router.get('/me', authenticate, getMe);
  *         description: Akses dilarang (Forbidden)
  *       404:
  *         description: Resource tidak ditemukan (Not Found)
- */
-router.post('/logout', authenticate, logout);
+    */
+router.post('/logout', authenticate, logout);;
 
 /**
  * @swagger

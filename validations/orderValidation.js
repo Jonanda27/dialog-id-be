@@ -8,6 +8,21 @@ export const checkoutSchema = z.object({
                 qty: z.number().int().positive('Kuantitas minimal 1')
             })
         ).min(1, 'Keranjang belanja tidak boleh kosong'),
-        shipping_address: z.string().min(10, 'Alamat pengiriman terlalu pendek/tidak lengkap')
+
+        shipping_address: z.string().min(10, 'Alamat pengiriman tidak lengkap'),
+
+        // ⚡ PERBAIKAN: Sinkronisasi dengan CheckoutPayload dari Frontend
+        courier_code: z.string().min(2, 'Kode kurir wajib diisi'),
+        service_type: z.string().min(1, 'Tipe layanan pengiriman wajib diisi'),
+        shipping_fee: z.number().min(0, 'Ongkos kirim tidak valid'),
+
+        // Opsional/Default 0 karena tidak semua pesanan ada request grading
+        grading_fee: z.number().min(0).optional().default(0)
+    })
+});
+
+export const shipOrderSchema = z.object({
+    body: z.object({
+        tracking_number: z.string().min(5, 'Nomor resi tidak valid')
     })
 });
