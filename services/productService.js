@@ -86,7 +86,7 @@ export const updateProduct = async (productId, storeId, updateData, files) => {
         const mediaRecords = files.map((file, index) => ({
             product_id: product.id,
             media_url: `/public/uploads/products/${file.filename}`,
-            is_primary: index === 0
+            is_primary: index === 0 
         }));
 
         await db.ProductMedia.bulkCreate(mediaRecords);
@@ -147,7 +147,7 @@ export const getAllProducts = async (filters = { standard: {}, dynamic: {} }) =>
                 model: db.ProductMedia,
                 as: 'media',
                 where: { is_primary: true }, // Hanya ambil foto primary untuk katalog
-                required: false // Left join
+                required: false // Left join, jaga-jaga kalau produk tidak punya foto
             },
             {
                 model: db.Store,
@@ -188,7 +188,8 @@ export const getProductsByStore = async (storeId, filters = { standard: {}, dyna
             {
                 model: db.ProductMedia,
                 as: 'media',
-                where: { is_primary: true },
+                // Ambil foto utama saja untuk tampilan list
+                where: { is_primary: true }, 
                 required: false
             }
         ],

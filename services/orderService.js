@@ -3,7 +3,7 @@ import db from '../models/index.js';
 class OrderService {
     /**
      * Membuat pesanan baru dengan validasi stok, toko tunggal, dan penanganan biaya.
-     * ⚡ MENGGUNAKAN PESSIMISTIC LOCKING UNTUK MENCEGAH OVERSELLING ⚡
+     * Menggunakan Pessimistic Locking dan Transaksi ACID.
      */
     static async createOrder(buyerId, payload) {
         // ⚡ PERBAIKAN: Mengekstrak seluruh data yang dikirim dari Frontend sesuai skema Zod
@@ -15,6 +15,7 @@ class OrderService {
         try {
             let subtotal = 0;
             let totalGradingFee = 0;
+            const shippingFee = 15000; // Simulasi statis ongkir
             let storeId = null;
             const orderItemsData = [];
 
@@ -30,8 +31,8 @@ class OrderService {
                     lock: t.LOCK.UPDATE
                 });
 
-                if (!product || product.metadata?.status !== 'active') {
-                    throw { statusCode: 404, message: `Produk dengan ID ${item.product_id} tidak ditemukan atau sudah tidak aktif.` };
+                if (!product || !product.is_active) {
+                    throw { statusCode: 404, message: `Produk dengan ID ${item.product_id} tidak ditemukan atau tidak aktif.` };
                 }
 
                 // Validasi single-store (1 Checkout = 1 Toko)
@@ -40,12 +41,12 @@ class OrderService {
                     throw { statusCode: 400, message: 'Semua produk dalam satu pesanan harus berasal dari toko yang sama.' };
                 }
 
-                // 2. STOCK VALIDATION (Pencegahan Minus)
+                // 2. Stock Validation
                 if (product.stock < item.qty) {
-                    throw { statusCode: 400, message: `Maaf, stok ${product.name} tidak mencukupi (Sisa: ${product.stock}). Mungkin baru saja dibeli orang lain.` };
+                    throw { statusCode: 400, message: `Stok produk ${product.name} tidak mencukupi. Sisa: ${product.stock}` };
                 }
 
-                // 3. Lazy Evaluation: Cek request grading
+                // 3. Lazy Evaluation: Cek apakah Buyer ini pernah request grading dan sudah dipenuhi oleh Seller
                 const gradingRequest = await db.GradingRequest.findOne({
                     where: {
                         buyer_id: buyerId,
@@ -55,6 +56,7 @@ class OrderService {
                     transaction: t
                 });
 
+                // Jika ada request grading terpenuhi, bebankan biaya 25.000 per jenis barang
                 const itemGradingFee = gradingRequest ? 25000 : 0;
                 totalGradingFee += itemGradingFee;
 
@@ -70,7 +72,7 @@ class OrderService {
                     grading_at_purchase: product.grading || 'Raw'
                 });
 
-                // 6. KURANGI STOK PRODUK (Aman dari race condition karena sudah di-lock)
+                // 5. Kurangi Stok Produk
                 await product.update({ stock: product.stock - item.qty }, { transaction: t });
             }
 
@@ -92,11 +94,11 @@ class OrderService {
                 shipping_address: fullShippingAddress
             }, { transaction: t });
 
-            // 8. Insert Order Items dengan Order ID yang baru terbuat
+            // 7. Insert Order Items dengan Order ID yang baru terbuat
             const itemsWithOrderId = orderItemsData.map(item => ({ ...item, order_id: order.id }));
             await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
 
-            // 9. Create Escrow Record (Penahanan Dana)
+            // 8. Create Escrow Record (Penahanan Dana)
             await db.Escrow.create({
                 order_id: order.id,
                 amount_held: grandTotal,
@@ -224,6 +226,7 @@ class OrderService {
 
     /**
      * Mengambil daftar pesanan yang masuk ke toko.
+     * Menerapkan Eager Loading untuk detail pembeli dan item produk.
      */
     static async getStoreOrders(storeId, statusFilter) {
         const whereClause = { store_id: storeId };
@@ -239,7 +242,7 @@ class OrderService {
                 },
                 {
                     model: db.OrderItem,
-                    as: 'items',
+                    as: 'items', // Sesuai relasi hasMany di model Order
                     include: [
                         {
                             model: db.Product,
@@ -257,6 +260,7 @@ class OrderService {
      * Memproses pengiriman pesanan dan input resi.
      */
     static async shipOrder(orderId, storeId, trackingNumber) {
+        // PERBAIKAN ARSITEKTUR: Tidak perlu JOIN ke tabel Store. Cukup ambil ordernya.
         const order = await db.Order.findByPk(orderId);
 
         if (!order) {
@@ -280,13 +284,14 @@ class OrderService {
 
     /**
      * Menyelesaikan pesanan, merilis dana Escrow, dan mengupdate saldo dompet toko.
+     * Menggunakan Transaksi ACID.
      */
     static async completeOrder(orderId, buyerId) {
+        // Memulai Transaksi Database untuk integritas Finansial
         const t = await db.sequelize.transaction();
 
         try {
             const order = await db.Order.findByPk(orderId, { transaction: t });
-
             if (!order) throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
 
             if (order.buyer_id !== buyerId) {
@@ -310,15 +315,17 @@ class OrderService {
             await escrow.save({ transaction: t });
 
             // 3. Kalkulasi Mutasi Finansial
+            // amount_to_seller = (Subtotal + GradingFee) - (AdminFee 3%) + Ongkir
             const subtotal = Number(order.subtotal);
             const gradingFee = Number(order.grading_fee);
             const shippingFee = Number(order.shipping_fee);
 
             const baseAmount = subtotal + gradingFee;
             const adminFee = baseAmount * 0.03;
+            // Sesuai instruksi: Masukkan total bersih + ongkir ke seller untuk simulasi
             const netToSeller = (baseAmount - adminFee) + shippingFee;
 
-            // 4. Catat Mutasi Finansial (CREDIT)
+            // 4. Catat Mutasi ke Wallet Transactions (CREDIT)
             await db.WalletTransaction.create({
                 store_id: order.store_id,
                 type: 'CREDIT',
@@ -327,11 +334,12 @@ class OrderService {
                 reference_id: order.id
             }, { transaction: t });
 
-            // 5. Update Saldo Toko dengan Pessimistic Lock
+            // 5. Update Saldo Toko (Store Balance)
             const store = await db.Store.findByPk(order.store_id, { transaction: t, lock: t.LOCK.UPDATE });
             store.balance = Number(store.balance) + netToSeller;
             await store.save({ transaction: t });
 
+            // Commit semua perubahan permanen
             await t.commit();
             return order;
 

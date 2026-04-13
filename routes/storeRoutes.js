@@ -4,7 +4,8 @@ import {
     uploadKycDocument, 
     getWallet,
     getMyStore,
-    updateStore 
+    updateStore,
+    getAllStores
 } from '../controllers/storeController.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { registerStoreSchema } from '../validations/storeValidation.js';
@@ -46,6 +47,14 @@ router.put('/update',
     ]), 
     updateStore
 );
+
+/**
+ * @desc    Get All Stores (Eksplorasi Toko)
+ * @route   GET /api/stores
+ * @access  Public
+ * @note    Diletakkan di paling atas agar tidak bentrok dengan route spesifik
+ */
+router.get('/', getAllStores);
 
 /**
  * Route: GET /api/stores/wallet

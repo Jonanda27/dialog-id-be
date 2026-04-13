@@ -65,6 +65,7 @@ export const getStoreOrders = asyncHandler(async (req, res) => {
 
 export const ship = asyncHandler(async (req, res) => {
     const { tracking_number } = req.body;
+    // PERBAIKAN: Gunakan store.id, BUKAN user.id agar sinkron dengan Service
     const storeId = req.store.id;
     const orderId = req.params.id;
 
@@ -73,9 +74,10 @@ export const ship = asyncHandler(async (req, res) => {
 });
 
 export const complete = asyncHandler(async (req, res) => {
-    const buyerId = req.user.id;
+    const buyerId = req.user.id; // Diambil dari token
     const orderId = req.params.id;
 
-    const result = await OrderService.completeOrder(orderId, buyerId);
+    const result = await orderService.completeOrder(orderId, buyerId);
     return successResponse(res, 200, 'Pesanan diselesaikan. Dana Escrow telah dirilis ke dompet Seller.', result);
 });
+
