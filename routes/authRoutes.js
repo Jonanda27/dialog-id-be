@@ -98,13 +98,15 @@ router.get('/me', authenticate, getMe);
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Logout berhasil
+ *         description: Logout berhasil dan sesi diakhiri
  *       401:
  *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
  *       403:
  *         description: Akses dilarang (Forbidden)
- */
-router.post('/logout', authenticate, logout);
+ *       404:
+ *         description: Resource tidak ditemukan (Not Found)
+    */
+router.post('/logout', authenticate, logout);;
 
 /**
  * @swagger

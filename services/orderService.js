@@ -6,7 +6,8 @@ class OrderService {
      * ⚡ MENGGUNAKAN PESSIMISTIC LOCKING UNTUK MENCEGAH OVERSELLING ⚡
      */
     static async createOrder(buyerId, payload) {
-        const { items, shipping_address, shipping_fee = 15000 } = payload; // Ongkir bisa dari payload hasil kalkulasi shippingService
+        // ⚡ PERBAIKAN: Mengekstrak seluruh data yang dikirim dari Frontend sesuai skema Zod
+        const { items, shipping_address, courier_code, service_type, shipping_fee } = payload;
 
         // Memulai Transaksi Database (ACID)
         const t = await db.sequelize.transaction();
@@ -17,10 +18,13 @@ class OrderService {
             let storeId = null;
             const orderItemsData = [];
 
+            // ⚡ PERBAIKAN: Gunakan ongkos kirim dari payload Frontend
+            // Catatan Analis: Untuk skala produksi, shipping_fee ini idealnya diverifikasi ulang ke API Logistik di server
+            const actualShippingFee = Number(shipping_fee);
+
             // Loop setiap item dalam keranjang
             for (const item of items) {
-                // 1. PESSIMISTIC LOCK: Kunci baris produk ini. 
-                // Jika Kolektor B mencoba membeli barang ini, kuerinya akan "menunggu" sampai Transaksi Kolektor A selesai.
+                // 1. Pessimistic Lock: Kunci baris produk ini agar tidak overselling
                 const product = await db.Product.findByPk(item.product_id, {
                     transaction: t,
                     lock: t.LOCK.UPDATE
@@ -58,33 +62,34 @@ class OrderService {
                 const itemSubtotal = parseFloat(product.price) * item.qty;
                 subtotal += itemSubtotal;
 
-                // 5. Persiapkan data order_items (ADAPTASI JSONB METADATA)
-                // Mengambil nilai grading dari metadata (bisa media_grading untuk audio, atau physical_condition untuk gear)
-                const itemGrading = product.metadata?.media_grading || product.metadata?.physical_condition || 'N/A';
-
+                // Persiapkan data order_items
                 orderItemsData.push({
                     product_id: product.id,
                     qty: item.qty,
                     price_at_purchase: product.price,
-                    grading_at_purchase: itemGrading // <-- Menggunakan data dari JSONB
+                    grading_at_purchase: product.grading || 'Raw'
                 });
 
                 // 6. KURANGI STOK PRODUK (Aman dari race condition karena sudah di-lock)
                 await product.update({ stock: product.stock - item.qty }, { transaction: t });
             }
 
-            const grandTotal = subtotal + shippingFee + totalGradingFee;
+            const grandTotal = subtotal + actualShippingFee + totalGradingFee;
 
-            // 7. Create Order Utama
+            // ⚡ TACTICAL FIX: Karena tabel orders tidak punya kolom courier_code, 
+            // kita sematkan info kurir ke awal teks alamat pengiriman agar Seller bisa membacanya.
+            const fullShippingAddress = `[${courier_code.toUpperCase()} - ${service_type.toUpperCase()}] ${shipping_address}`;
+
+            // 6. Create Order Utama
             const order = await db.Order.create({
                 buyer_id: buyerId,
                 store_id: storeId,
                 subtotal,
-                shipping_fee: shippingFee,
+                shipping_fee: actualShippingFee,
                 grading_fee: totalGradingFee,
                 grand_total: grandTotal,
                 status: 'pending_payment',
-                shipping_address
+                shipping_address: fullShippingAddress
             }, { transaction: t });
 
             // 8. Insert Order Items dengan Order ID yang baru terbuat
@@ -98,15 +103,13 @@ class OrderService {
                 status: 'held'
             }, { transaction: t });
 
-            // JIKA SEMUA SUKSES: Bebaskan lock dan simpan permanen!
+            // COMMIT perubahan permanen ke database
             await t.commit();
 
             return order;
 
         } catch (error) {
-            // JIKA ADA 1 SAJA YANG GAGAL: Batalkan semua (Rollback) & lepaskan lock!
             await t.rollback();
-
             const err = new Error(error.message || 'Terjadi kesalahan sistem saat checkout');
             err.statusCode = error.statusCode || 500;
             throw err; // Lempar ke Controller
@@ -114,21 +117,124 @@ class OrderService {
     }
 
     /**
+     * ⚡ BARU: Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)
+     */
+    static async getOrderById(orderId, userId) {
+        const order = await db.Order.findByPk(orderId, {
+            include: [
+                { model: db.User, as: 'buyer', attributes: ['id', 'full_name', 'email'] },
+                { model: db.Store, as: 'store' },
+                {
+                    model: db.OrderItem,
+                    as: 'items',
+                    include: [
+                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
+                    ]
+                }
+            ]
+        });
+
+        if (!order) {
+            throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
+        }
+
+        // Otorisasi: Hanya pembeli atau pemilik toko yang boleh melihat detail ini
+        if (order.buyer_id !== userId && order.store_id !== userId) {
+            throw { statusCode: 403, message: 'Akses ditolak.' };
+        }
+
+        return order;
+    }
+
+    /**
+     * ⚡ BARU: Mengambil riwayat pesanan milik pembeli (Buyer)
+     */
+    static async getBuyerOrders(buyerId, statusFilter) {
+        const whereClause = { buyer_id: buyerId };
+        if (statusFilter) whereClause.status = statusFilter;
+
+        return await db.Order.findAll({
+            where: whereClause,
+            include: [
+                { model: db.Store, as: 'store' },
+                {
+                    model: db.OrderItem,
+                    as: 'items',
+                    include: [
+                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
+                    ]
+                }
+            ],
+            order: [['created_at', 'DESC']]
+        });
+    }
+
+    /**
+     * ⚡ BARU: Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)
+     */
+    static async getOrderById(orderId, userId) {
+        const order = await db.Order.findByPk(orderId, {
+            include: [
+                { model: db.User, as: 'buyer', attributes: ['id', 'full_name', 'email'] },
+                { model: db.Store, as: 'store' },
+                {
+                    model: db.OrderItem,
+                    as: 'items',
+                    include: [
+                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
+                    ]
+                }
+            ]
+        });
+
+        if (!order) {
+            throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
+        }
+
+        // Otorisasi: Hanya pembeli atau pemilik toko yang boleh melihat detail ini
+        if (order.buyer_id !== userId && order.store_id !== userId) {
+            throw { statusCode: 403, message: 'Akses ditolak.' };
+        }
+
+        return order;
+    }
+
+    /**
+     * ⚡ BARU: Mengambil riwayat pesanan milik pembeli (Buyer)
+     */
+    static async getBuyerOrders(buyerId, statusFilter) {
+        const whereClause = { buyer_id: buyerId };
+        if (statusFilter) whereClause.status = statusFilter;
+
+        return await db.Order.findAll({
+            where: whereClause,
+            include: [
+                { model: db.Store, as: 'store' },
+                {
+                    model: db.OrderItem,
+                    as: 'items',
+                    include: [
+                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
+                    ]
+                }
+            ],
+            order: [['created_at', 'DESC']]
+        });
+    }
+
+    /**
      * Mengambil daftar pesanan yang masuk ke toko.
      */
     static async getStoreOrders(storeId, statusFilter) {
         const whereClause = { store_id: storeId };
-
-        if (statusFilter) {
-            whereClause.status = statusFilter;
-        }
+        if (statusFilter) whereClause.status = statusFilter;
 
         return await db.Order.findAll({
             where: whereClause,
             include: [
                 {
                     model: db.User,
-                    as: 'buyer', // Sesuai relasi belongsTo di model Order
+                    as: 'buyer',
                     attributes: ['id', 'full_name', 'email']
                 },
                 {
@@ -138,7 +244,7 @@ class OrderService {
                         {
                             model: db.Product,
                             as: 'product',
-                          attributes: ['id', 'name', 'price', 'metadata']
+                            attributes: ['id', 'name', 'price', 'metadata']
                         }
                     ]
                 }
@@ -153,8 +259,13 @@ class OrderService {
     static async shipOrder(orderId, storeId, trackingNumber) {
         const order = await db.Order.findByPk(orderId);
 
-        if (!order) throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
-        if (order.store_id !== storeId) throw { statusCode: 403, message: 'Akses ditolak. Ini bukan pesanan dari toko Anda.' };
+        if (!order) {
+            throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
+        }
+
+        if (order.store_id !== storeId) {
+            throw { statusCode: 403, message: 'Akses ditolak. Ini bukan pesanan dari toko Anda.' };
+        }
 
         if (order.status !== 'paid' && order.status !== 'processing') {
             throw { statusCode: 400, message: `Tidak dapat mengirim pesanan dengan status '${order.status}'.` };
@@ -177,7 +288,10 @@ class OrderService {
             const order = await db.Order.findByPk(orderId, { transaction: t });
 
             if (!order) throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
-            if (order.buyer_id !== buyerId) throw { statusCode: 403, message: 'Akses ditolak. Anda bukan pembeli pesanan ini.' };
+
+            if (order.buyer_id !== buyerId) {
+                throw { statusCode: 403, message: 'Akses ditolak. Anda bukan pembeli pesanan ini.' };
+            }
 
             if (order.status !== 'shipped' && order.status !== 'delivered') {
                 throw { statusCode: 400, message: 'Pesanan belum dikirim, tidak dapat diselesaikan.' };

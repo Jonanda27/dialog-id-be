@@ -1,6 +1,8 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
-import OrderService from '../services/orderService.js'; // Perbaikan penamaan import agar sesuai dengan class export
+
+// ⚡ PERBAIKAN IMPORT: Konsistensi penamaan kapitalisasi
+import * as OrderService from '../services/orderService.js';
 import ShippingService from '../services/shippingService.js';
 
 export const calculateShipping = asyncHandler(async (req, res) => {
@@ -20,9 +22,8 @@ export const checkout = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
     const payload = req.body;
 
-    // Proses ini memicu Transaksi dan Pessimistic Lock di DB.
-    // Jika stok kurang atau keduluan orang lain, OrderService akan throw error 400.
-    // Error tersebut ditangkap otomatis oleh asyncHandler dan dikirim ke Frontend.
+    // Catatan Analis: Logika validasi total harga produk vs database 
+    // mutlak harus dilakukan di dalam OrderService.createOrder()
     const order = await OrderService.createOrder(buyerId, payload);
 
     return successResponse(
@@ -33,22 +34,39 @@ export const checkout = asyncHandler(async (req, res) => {
     );
 });
 
+// ⚡ BARU: Endpoint untuk mengambil detail pesanan spesifik (Dibutuhkan Frontend di halaman Pembayaran)
+export const getOrderById = asyncHandler(async (req, res) => {
+    const userId = req.user.id; // Bisa buyer atau seller
+    const orderId = req.params.id;
+
+    // Service harus mengecek otoritas (apakah user ini pemilik order atau penjual dari order ini)
+    const order = await OrderService.getOrderById(orderId, userId);
+
+    return successResponse(res, 200, 'Berhasil memuat detail pesanan.', order);
+});
+
+// ⚡ BARU: Endpoint untuk Riwayat Belanja Buyer (GET /orders/my-orders)
+export const getBuyerOrders = asyncHandler(async (req, res) => {
+    const buyerId = req.user.id;
+    const statusFilter = req.query.status;
+
+    const result = await OrderService.getBuyerOrders(buyerId, statusFilter);
+    return successResponse(res, 200, 'Berhasil memuat riwayat belanja.', result);
+});
+
 export const getStoreOrders = asyncHandler(async (req, res) => {
+    // req.store di-inject oleh middleware isStoreApproved
     const storeId = req.store.id;
     const statusFilter = req.query.status;
 
-    const result = await orderService.getStoreOrders(storeId, statusFilter);
-    return successResponse(res, 200, 'Berhasil memuat daftar pesanan.', result);
+    const result = await OrderService.getStoreOrders(storeId, statusFilter);
+    return successResponse(res, 200, 'Berhasil memuat daftar pesanan masuk.', result);
 });
 
 export const ship = asyncHandler(async (req, res) => {
     const { tracking_number } = req.body;
     const storeId = req.store.id;
     const orderId = req.params.id;
-
-    if (!tracking_number) {
-        return res.status(400).json({ success: false, message: 'Resi pengiriman wajib diisi.' });
-    }
 
     const result = await OrderService.shipOrder(orderId, storeId, tracking_number);
     return successResponse(res, 200, 'Pesanan berhasil dikirim dan resi tersimpan.', result);
