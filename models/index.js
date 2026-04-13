@@ -4,8 +4,8 @@ import dbConfig from '../config/database.cjs';
 // Import Models
 import User from './User.js';
 import Store from './Store.js';
-import Category from './Category.js';         // <-- BARU: Import Category
-import SubCategory from './SubCategory.js';   // <-- BARU: Import SubCategory
+import Category from './Category.js';
+import SubCategory from './SubCategory.js';
 import Product from './Product.js';
 import ProductMedia from './ProductMedia.js';
 import Order from './Order.js';
@@ -29,8 +29,8 @@ const sequelize = new Sequelize(config.database, config.username, config.passwor
 const models = {
   User: User.init(sequelize),
   Store: Store.init(sequelize),
-  Category: Category.init(sequelize),       // <-- BARU: Inisialisasi Category
-  SubCategory: SubCategory.init(sequelize), // <-- BARU: Inisialisasi SubCategory
+  Category: Category.init(sequelize),
+  SubCategory: SubCategory.init(sequelize),
   Product: Product.init(sequelize),
   ProductMedia: ProductMedia.init(sequelize),
   Order: Order.init(sequelize),

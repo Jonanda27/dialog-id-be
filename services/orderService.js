@@ -129,7 +129,7 @@ class OrderService {
                 {
                     model: db.User,
                     as: 'buyer', // Sesuai relasi belongsTo di model Order
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'full_name', 'email']
                 },
                 {
                     model: db.OrderItem,
@@ -138,7 +138,7 @@ class OrderService {
                         {
                             model: db.Product,
                             as: 'product',
-                            attributes: ['name', 'format']
+                          attributes: ['id', 'name', 'price', 'metadata']
                         }
                     ]
                 }

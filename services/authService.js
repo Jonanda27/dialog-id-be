@@ -3,6 +3,7 @@ import db from '../models/index.js';
 
 /**
  * Helper internal untuk generate JWT Token
+ * Payload sudah menyertakan role untuk validasi stateless di middleware
  */
 const generateToken = (userId, role) => {
     const payload = { id: userId, role: role };
@@ -11,18 +12,17 @@ const generateToken = (userId, role) => {
     });
 };
 
-
 export const registerUser = async (userData) => {
     const { email, password, full_name, role } = userData;
 
-    // 1. SECURITY REFINEMENT
+    // 1. SECURITY REFINEMENT: Mencegah eskalasi hak istimewa (Privilege Escalation)
     if (role === 'admin') {
         const error = new Error('Akses ditolak.');
-        error.statusCode = 403; 
+        error.statusCode = 403;
         throw error;
     }
 
-    // 2. Cek email
+    // 2. Validasi Duplikasi
     const existingUser = await db.User.findOne({ where: { email } });
     if (existingUser) {
         const error = new Error('Email sudah terdaftar.');
@@ -30,34 +30,47 @@ export const registerUser = async (userData) => {
         throw error;
     }
 
-    // 3. PROSES SIMPAN (TIDAK PERLU bcrypt.hash di sini)
-    // Karena Hooks di models/User.js sudah otomatis melakukan hashing
+    // 3. Proses Simpan (Hashing didelegasikan ke Hooks Model)
     const newUser = await db.User.create({
         full_name,
         email,
-        password, // Kirim plain text saja, biar Hooks Model yang mengurusnya
-        role: role || 'buyer' 
+        password,
+        role: role || 'buyer'
     });
 
-    // 4. Respon
-    const userResponse = newUser.toJSON();
-    delete userResponse.password;
-
-    return userResponse;
+    // 4. Standarisasi DTO Output (Sama persis dengan bentuk payload Login/GetMe)
+    return {
+        id: newUser.id,
+        email: newUser.email,
+        full_name: newUser.full_name,
+        role: newUser.role,
+        store: null // Default state untuk user baru
+    };
 };
 
 export const loginUser = async (credentials) => {
     const { email, password } = credentials;
 
-    // 1. Cari user berdasarkan email
-    const user = await db.User.findOne({ where: { email } });
+    // 1. Cari user beserta relasi Toko (Eager Loading)
+    // Taktik ini mengeliminasi kebutuhan FE untuk memanggil /me sesaat setelah login
+    const user = await db.User.findOne({
+        where: { email },
+        include: [
+            {
+                model: db.Store,
+                as: 'store', // Sesuai relasi User.hasOne(Store)
+                attributes: ['id', 'name', 'status', 'balance'] // Tarik atribut esensial saja
+            }
+        ]
+    });
+
     if (!user) {
         const error = new Error('Kredensial tidak valid (Email tidak ditemukan).');
         error.statusCode = 401; // Unauthorized
         throw error;
     }
 
-    // 2. Verifikasi Password menggunakan method dari Model
+    // 2. Verifikasi Kriptografi Password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
         const error = new Error('Kredensial tidak valid (Password salah).');
@@ -68,28 +81,28 @@ export const loginUser = async (credentials) => {
     // 3. Generate Token
     const token = generateToken(user.id, user.role);
 
-    // 4. Return data
+    // 4. Return DTO yang komprehensif
     return {
         user: {
             id: user.id,
             email: user.email,
             full_name: user.full_name,
             role: user.role,
+            store: user.store || null, // FE bisa langsung membaca status toko (misal: 'approved' atau 'pending')
         },
         token,
     };
 };
 
 export const getUserProfile = async (userId) => {
-    // Ambil data user, kecualikan kolom password agar tidak bocor ke client
+    // Skema GetMe dipertahankan identik dengan hasil Login
     const user = await db.User.findByPk(userId, {
-        attributes: { exclude: ['password', 'password_hash'] }, // Exclude password/password_hash
+        attributes: { exclude: ['password', 'password_hash'] },
         include: [
             {
                 model: db.Store,
-                as: 'store', // Sesuai dengan alias di relasi User.hasOne(Store, { as: 'store' })
-                // Anda bisa membatasi atribut store yang dikirim jika perlu:
-                // attributes: ['id', 'name', 'status'] 
+                as: 'store',
+                attributes: ['id', 'name', 'status', 'balance']
             }
         ]
     });
@@ -104,8 +117,7 @@ export const getUserProfile = async (userId) => {
 };
 
 export const logoutUser = async () => {
-    // Untuk autentikasi stateless JWT, kita cukup memberikan sinyal sukses.
-    // Ke depannya, jika menggunakan Redis untuk blacklist token, logika ditambahkan di sini.
+    // Disiapkan untuk kapabilitas ekspansi masa depan (misal: Redis Token Blacklisting)
     return {
         message: 'Sesi telah diakhiri secara sistem.'
     };

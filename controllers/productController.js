@@ -2,18 +2,51 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
 import ProductService from '../services/productService.js';
 
+/**
+ * Mendapatkan Detail Produk (Public/PDP)
+ * Digunakan untuk menampilkan informasi lengkap produk kepada Buyer
+ */
+export const getDetail = asyncHandler(async (req, res) => {
+    const productId = req.params.id;
+
+    // Delegasi ke Service Layer untuk pengambilan data & join tabel (Media, Store, Metadata)
+    // Diperbarui menjadi getProductDetails (sinkron dengan nama fungsi di ProductService)
+    const result = await ProductService.getProductDetails(productId);
+
+    return successResponse(
+        res,
+        200,
+        'Berhasil mengambil detail produk',
+        result
+    );
+});
+
 export const createProduct = asyncHandler(async (req, res) => {
-    // 1. Ekstraksi Context: req.store di-inject secara aman oleh middleware Fase A
+    // 1. Ekstraksi Context
     const storeId = req.store.id;
 
-    // 2. Ekstraksi Payload: multipart/form-data memisahkan teks dan biner
-    // Analisis Tipe Data: property price, stock, dan release_year di dalam req.body 
-    // akan terdeteksi sebagai tipe 'string'. Pastikan DTO/Validator (seperti Zod/Joi) 
-    // melakukan casting ke 'number' sebelum masuk ke productService.
-    const productData = req.body;
+    // 2. Ekstraksi Payload (Gunakan spread operator agar bisa dimodifikasi)
+    const productData = { ...req.body };
     const files = req.files;
 
-    // 3. Delegasi (Controller Pattern): Menyerahkan orkestrasi ke layer Service
+    // --- PERBAIKAN UTAMA DI SINI ---
+    // FormData mengirim objek sebagai string. Kita WAJIB mengubahnya kembali 
+    // menjadi Object JSON murni sebelum dilempar ke Service & Sequelize.
+    if (productData.metadata && typeof productData.metadata === 'string') {
+        try {
+            productData.metadata = JSON.parse(productData.metadata);
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                message: "Format JSON pada metadata tidak valid.",
+                errors: [{ field: "metadata", message: "Gagal mem-parsing string metadata." }]
+            });
+        }
+    }
+    // --------------------------------
+
+    // 3. Delegasi ke layer Service
+    // Sekarang productData.metadata sudah berbentuk Object, Sequelize pasti menerima!
     const result = await ProductService.createProduct(storeId, productData, files);
 
     return successResponse(
@@ -37,8 +70,24 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
 
     const storeId = req.store.id;
-    const updateData = req.body;
-    const files = req.files; // Jika ada upload foto baru
+    const updateData = { ...req.body }; // Gunakan spread operator
+    const files = req.files;
+
+    // --- PENCEGAHAN BUG PROAKTIF ---
+    // Terapkan parsing metadata yang sama seperti pada createProduct 
+    // karena update juga menggunakan mekanisme FormData.
+    if (updateData.metadata && typeof updateData.metadata === 'string') {
+        try {
+            updateData.metadata = JSON.parse(updateData.metadata);
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                message: "Format JSON pada metadata tidak valid.",
+                errors: [{ field: "metadata", message: "Gagal mem-parsing string metadata." }]
+            });
+        }
+    }
+    // --------------------------------
 
     // Kirim ke service
     const result = await ProductService.updateProduct(productId, storeId, updateData, files);

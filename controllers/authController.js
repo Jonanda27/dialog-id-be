@@ -14,7 +14,7 @@ export const register = asyncHandler(async (req, res) => {
     res,
     201, // 201 Created
     'Registrasi berhasil',
-    result
+    result // Output sudah bersih dari service layer (tanpa hash password)
   );
 });
 
@@ -30,7 +30,7 @@ export const login = asyncHandler(async (req, res) => {
     res,
     200, // 200 OK
     'Login berhasil',
-    result
+    result // Menyuplai User (termasuk status toko jika seller) + Token
   );
 });
 
@@ -40,7 +40,7 @@ export const login = asyncHandler(async (req, res) => {
  * @access  Private
  */
 export const getMe = asyncHandler(async (req, res) => {
-  // ID didapatkan dari middleware authenticate yang menyisipkan req.user
+  // Integritas data dijaga: ID diekstrak dari header JWT, bukan dari body request
   const userId = req.user.id;
 
   const result = await authService.getUserProfile(userId);
@@ -59,7 +59,6 @@ export const getMe = asyncHandler(async (req, res) => {
  * @access  Private
  */
 export const logout = asyncHandler(async (req, res) => {
-  // Memanggil service untuk memastikan proses bisnis logout terpenuhi
   await authService.logoutUser();
 
   return successResponse(
