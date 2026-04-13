@@ -79,7 +79,6 @@ router.post(
     authorize('seller'),
     isStoreApproved,
     uploadProductPhotos.array('photos', 5),
-    validateRequest(createProductSchema),
     createProduct
 );
 

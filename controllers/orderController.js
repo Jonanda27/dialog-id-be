@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
-import * as orderService from '../services/orderService.js';
+import orderService from '../services/orderService.js';
 
 export const checkout = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
@@ -21,7 +21,7 @@ export const getStoreOrders = asyncHandler(async (req, res) => {
     const storeId = req.store.id;
     const statusFilter = req.query.status;
 
-    const result = await OrderService.getStoreOrders(storeId, statusFilter);
+    const result = await orderService.getStoreOrders(storeId, statusFilter);
     return successResponse(res, 200, 'Berhasil memuat daftar pesanan.', result);
 });
 

@@ -39,3 +39,12 @@ export const errorResponse = (res, statusCode, message, errors = null) => {
 
     return res.status(statusCode).json(response);
 };
+
+// Create the object that matches what your controller expects
+const apiResponse = {
+    success: (res, message, data, meta) => successResponse(res, 200, message, data, meta),
+    notFound: (res, message) => errorResponse(res, 404, message),
+    error: (res, message, statusCode = 500, errors = null) => errorResponse(res, statusCode, message, errors)
+};
+
+export default apiResponse;

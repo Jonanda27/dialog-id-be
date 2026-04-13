@@ -1,9 +1,10 @@
 import express from 'express';
-import { checkout } from '../controllers/orderController.js';
+import { checkout, getStoreOrders } from '../controllers/orderController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { checkoutSchema } from '../validations/orderValidation.js';
 import { ship, complete } from '../controllers/orderController.js';
+import { isStoreApproved } from '../middlewares/store.js';
 
 const router = express.Router();
 
@@ -126,5 +127,37 @@ router.patch('/:id/ship', authenticate, authorize('seller'), ship);
  *         description: Pesanan tidak ditemukan
  */
 router.post('/:id/complete', authenticate, authorize('buyer'), complete);
+
+/**
+ * @swagger
+ * /api/orders/store:
+ * get:
+ * summary: Mendapatkan daftar pesanan yang masuk ke toko (Role Seller)
+ * description: Mengambil semua pesanan milik toko yang sedang login. Mendukung filter berdasarkan status melalui query params (?status=paid).
+ * tags: [Orders]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: query
+ * name: status
+ * schema:
+ * type: string
+ * enum: [pending, paid, shipped, completed, cancelled]
+ * description: Filter berdasarkan status pesanan
+ * responses:
+ * 200:
+ * description: Berhasil memuat daftar pesanan.
+ * 401:
+ * description: Tidak terautentikasi.
+ * 403:
+ * description: Akses ditolak (Bukan seller atau toko belum disetujui).
+ */
+router.get(
+    '/store', 
+    authenticate, 
+    authorize('seller'), 
+    isStoreApproved, // Pastikan toko aktif/disetujui
+    getStoreOrders
+);
 
 export default router;
