@@ -2,6 +2,21 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
 import * as orderService from '../services/orderService.js';
 
+import ShippingService from '../services/shippingService.js';
+
+export const calculateShipping = asyncHandler(async (req, res) => {
+    const { origin, destination, weight } = req.body;
+
+    const couriers = await ShippingService.calculateShippingCost(origin, destination, weight);
+
+    return successResponse(
+        res,
+        200,
+        'Berhasil mengkalkulasi opsi pengiriman.',
+        couriers
+    );
+});
+
 export const checkout = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
     const payload = req.body;
