@@ -1,5 +1,6 @@
 import express from 'express';
 import { checkout, ship, complete, calculateShipping } from '../controllers/orderController.js';
+import { checkout, getStoreOrders } from '../controllers/orderController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { checkoutSchema } from '../validations/orderValidation.js';
@@ -173,5 +174,41 @@ router.patch('/:id/ship', authenticate, authorize('seller'), ship);
  *         description: Pesanan tidak ditemukan (Not Found)
  */
 router.post('/:id/complete', authenticate, authorize('buyer'), complete);
+
+/**
+ * @swagger
+ * /api/orders/store:
+ *   get:
+ *     summary: Mendapatkan daftar pesanan yang masuk ke toko (Role Seller)
+ *     description: Mengambil semua pesanan milik toko yang sedang login. Mendukung filter berdasarkan status melalui query params (?status=paid).
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, paid, shipped, completed, cancelled]
+ *         description: Filter berdasarkan status pesanan
+ *     responses:
+ *       200:
+ *         description: Berhasil memuat daftar pesanan
+ *       400:
+ *         description: Parameter filter tidak valid (Bad Request)
+ *       401:
+ *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
+ *       403:
+ *         description: Akses ditolak, hanya untuk Seller dengan toko yang sudah disetujui (Forbidden)
+ *       404:
+ *         description: Data pesanan tidak ditemukan (Not Found)
+ */
+router.get(
+    '/store',
+    authenticate,
+    authorize('seller'),
+    isStoreApproved,
+    getStoreOrders
+);
 
 export default router;

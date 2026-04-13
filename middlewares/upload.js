@@ -2,8 +2,15 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
+
 // Tentukan direktori penyimpanan
 const uploadDir = 'public/uploads/kyc';
+
+const ensureDir = (dir) => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+};
 
 // Buat folder secara otomatis jika belum ada (Sync)
 if (!fs.existsSync(uploadDir)) {
@@ -67,4 +74,31 @@ export const uploadProductPhotos = multer({
     storage: productStorage,
     limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: fileFilter // Menggunakan fileFilter gambar yang sama dengan KYC
+});
+
+// ==========================================
+// KONFIGURASI UPLOAD BANNER & LOGO TOKO
+// ==========================================
+const storeStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        // Logika pemisahan folder berdasarkan fieldname
+        let dest = 'public/uploads';
+        if (file.fieldname === 'banner_file') dest = 'public/uploads/banner';
+        if (file.fieldname === 'logo_file') dest = 'public/uploads/logo';
+        
+        ensureDir(dest);
+        cb(null, dest);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        // Prefix nama file sesuai jenis filenya
+        const prefix = file.fieldname === 'banner_file' ? 'banner' : 'logo';
+        cb(null, prefix + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+export const uploadStoreMedia = multer({
+    storage: storeStorage,
+    limits: { fileSize: 3 * 1024 * 1024 }, // Maksimal 3MB untuk banner/logo
+    fileFilter: fileFilter
 });

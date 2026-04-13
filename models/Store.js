@@ -22,6 +22,35 @@ export default class Store extends Model {
                 type: DataTypes.TEXT,
                 allowNull: true,
             },
+            // Gambar Toko
+            logo_url: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            banner_url: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            // Jam Operasional
+            working_days: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            working_hours: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            // Media Sosial (Object JSON)
+            social_links: {
+                type: DataTypes.JSON,
+                allowNull: true,
+                defaultValue: {
+                    instagram: "",
+                    facebook: "",
+                    youtube: "",
+                    website: ""
+                }
+            },
             ktp_url: {
                 type: DataTypes.STRING,
                 allowNull: true,
@@ -40,12 +69,12 @@ export default class Store extends Model {
             sequelize,
             tableName: 'stores',
             modelName: 'Store',
-            underscored: true,
+            underscored: true, // Ini akan mengubah social_links menjadi social_links di DB
+            timestamps: true,
         });
     }
 
     static associate(models) {
-        // Relasi kebalikan (Inverse Relation)
         this.belongsTo(models.User, {
             foreignKey: 'user_id',
             as: 'owner'

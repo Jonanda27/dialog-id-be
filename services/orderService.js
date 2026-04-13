@@ -128,8 +128,8 @@ class OrderService {
             include: [
                 {
                     model: db.User,
-                    as: 'buyer',
-                    attributes: ['id', 'full_name', 'email'] // Disesuaikan dengan kolom tabel User kita (full_name)
+                    as: 'buyer', // Sesuai relasi belongsTo di model Order
+                    attributes: ['id', 'full_name', 'email']
                 },
                 {
                     model: db.OrderItem,
@@ -138,7 +138,7 @@ class OrderService {
                         {
                             model: db.Product,
                             as: 'product',
-                            attributes: ['name', 'metadata'] // Format dihapus, diganti metadata
+                          attributes: ['id', 'name', 'price', 'metadata']
                         }
                     ]
                 }

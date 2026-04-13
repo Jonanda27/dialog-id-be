@@ -58,6 +58,28 @@ export const getMyStore = asyncHandler(async (req, res) => {
     return successResponse(res, 200, 'Berhasil memuat data toko.', store);
 });
 
+export const updateStore = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const updateData = req.body;
+    const files = req.files; // Mengambil file yang diupload
+
+    const updatedStore = await StoreService.updateStoreService(userId, updateData, files);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profil toko berhasil diperbarui',
+      data: updatedStore
+    });
+  } catch (error) {
+    console.error("Update Error:", error);
+    return res.status(error.message === 'Toko tidak ditemukan' ? 404 : 500).json({
+      success: false,
+      message: error.message || 'Internal Server Error'
+    });
+  }
+};
+
 /**
  * @desc    Mengambil saldo dan riwayat transaksi (mutasi) dompet toko
  * @route   GET /api/stores/wallet

@@ -10,7 +10,8 @@ export const getDetail = asyncHandler(async (req, res) => {
     const productId = req.params.id;
 
     // Delegasi ke Service Layer untuk pengambilan data & join tabel (Media, Store, Metadata)
-    const result = await ProductService.getProductDetail(productId);
+    // Diperbarui menjadi getProductDetails (sinkron dengan nama fungsi di ProductService)
+    const result = await ProductService.getProductDetails(productId);
 
     return successResponse(
         res,
@@ -21,10 +22,31 @@ export const getDetail = asyncHandler(async (req, res) => {
 });
 
 export const createProduct = asyncHandler(async (req, res) => {
+    // 1. Ekstraksi Context
     const storeId = req.store.id;
-    const productData = req.body;
+
+    // 2. Ekstraksi Payload (Gunakan spread operator agar bisa dimodifikasi)
+    const productData = { ...req.body };
     const files = req.files;
 
+    // --- PERBAIKAN UTAMA DI SINI ---
+    // FormData mengirim objek sebagai string. Kita WAJIB mengubahnya kembali 
+    // menjadi Object JSON murni sebelum dilempar ke Service & Sequelize.
+    if (productData.metadata && typeof productData.metadata === 'string') {
+        try {
+            productData.metadata = JSON.parse(productData.metadata);
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                message: "Format JSON pada metadata tidak valid.",
+                errors: [{ field: "metadata", message: "Gagal mem-parsing string metadata." }]
+            });
+        }
+    }
+    // --------------------------------
+
+    // 3. Delegasi ke layer Service
+    // Sekarang productData.metadata sudah berbentuk Object, Sequelize pasti menerima!
     const result = await ProductService.createProduct(storeId, productData, files);
 
     return successResponse(
@@ -46,8 +68,24 @@ export const updateProduct = asyncHandler(async (req, res) => {
     }
 
     const storeId = req.store.id;
-    const updateData = req.body;
+    const updateData = { ...req.body }; // Gunakan spread operator
     const files = req.files;
+
+    // --- PENCEGAHAN BUG PROAKTIF ---
+    // Terapkan parsing metadata yang sama seperti pada createProduct 
+    // karena update juga menggunakan mekanisme FormData.
+    if (updateData.metadata && typeof updateData.metadata === 'string') {
+        try {
+            updateData.metadata = JSON.parse(updateData.metadata);
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                message: "Format JSON pada metadata tidak valid.",
+                errors: [{ field: "metadata", message: "Gagal mem-parsing string metadata." }]
+            });
+        }
+    }
+    // --------------------------------
 
     const result = await ProductService.updateProduct(productId, storeId, updateData, files);
 
@@ -58,7 +96,7 @@ export const deleteProduct = asyncHandler(async (req, res) => {
     const productId = req.params.id;
     const storeId = req.store.id;
 
-    await productService.deleteProduct(productId, storeId);
+    await ProductService.deleteProduct(productId, storeId);
 
     return successResponse(res, 200, 'Produk berhasil dihapus dari katalog');
 });
@@ -116,6 +154,6 @@ export const bulkCreateProducts = asyncHandler(async (req, res) => {
         release_year: Number(p.release_year)
     }));
 
-    const result = await productService.bulkCreateProducts(preparedData);
+    const result = await ProductService.bulkCreateProducts(preparedData);
     return successResponse(res, 201, `${result.length} Produk berhasil diimport`, result);
 });

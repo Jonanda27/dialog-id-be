@@ -12,13 +12,13 @@ module.exports = {
             user_id: {
                 type: Sequelize.UUID,
                 allowNull: false,
-                unique: true, // One-to-One relationship
+                unique: true,
                 references: {
                     model: 'users',
                     key: 'id',
                 },
                 onUpdate: 'CASCADE',
-                onDelete: 'CASCADE', // Jika user dihapus, toko otomatis terhapus
+                onDelete: 'CASCADE',
             },
             name: {
                 type: Sequelize.STRING,
@@ -29,9 +29,33 @@ module.exports = {
                 type: Sequelize.TEXT,
                 allowNull: true,
             },
+            // Tambahan untuk Gambar
+            logo_url: {
+                type: Sequelize.STRING,
+                allowNull: true,
+            },
+            banner_url: {
+                type: Sequelize.STRING,
+                allowNull: true,
+            },
+            // Tambahan untuk Operasional
+            working_days: {
+                type: Sequelize.STRING, // Contoh: "Senin - Sabtu"
+                allowNull: true,
+            },
+            working_hours: {
+                type: Sequelize.STRING, // Contoh: "09.00 - 17.00"
+                allowNull: true,
+            },
+            // Tambahan untuk Media Sosial (Disimpan sebagai JSON)
+            // Struktur: { "instagram": "...", "facebook": "...", "youtube": "...", "website": "..." }
+            social_links: {
+                type: Sequelize.JSON,
+                allowNull: true,
+            },
             ktp_url: {
                 type: Sequelize.STRING,
-                allowNull: true, // Bisa null saat awal daftar, wajib diisi saat upload KYC
+                allowNull: true,
             },
             status: {
                 type: Sequelize.ENUM('pending', 'approved', 'rejected', 'suspended'),
@@ -58,6 +82,7 @@ module.exports = {
 
     async down(queryInterface, Sequelize) {
         await queryInterface.dropTable('stores');
+        // Hapus tipe enum jika menggunakan PostgreSQL
         await queryInterface.sequelize.query('DROP TYPE IF EXISTS "enum_stores_status";');
     }
 };

@@ -1,17 +1,20 @@
 import express from 'express';
-import { registerStore } from '../controllers/storeController.js';
+import { 
+    registerStore, 
+    uploadKycDocument, 
+    getWallet,
+    getMyStore,
+    updateStore 
+} from '../controllers/storeController.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { registerStoreSchema } from '../validations/storeValidation.js';
-import { authenticate, authorize } from '../middlewares/auth.js';
-import { uploadKycDocument } from '../controllers/storeController.js';
-import { uploadKYC } from '../middlewares/upload.js';
+import { authenticate, authorize,  } from '../middlewares/auth.js';
+import { isStoreApproved } from '../middlewares/store.js'; // Pastikan middleware ini ada
+import { uploadKYC, uploadStoreMedia } from '../middlewares/upload.js';
 
 const router = express.Router();
 
 // Route: POST /api/stores/register-store
-// Proteksi 1: Harus login (authenticate)
-// Proteksi 2: Harus role seller (authorize)
-// Proteksi 3: Validasi payload (Zod)
 router.post(
     '/register-store',
     authenticate,
@@ -21,13 +24,43 @@ router.post(
 );
 
 // Route: PATCH /api/stores/upload-kyc
-// Menggunakan middleware multer uploadKYC.single('ktp_file')
 router.patch(
     '/upload-kyc',
     authenticate,
     authorize('seller'),
-    uploadKYC.single('ktp_file'), // 'ktp_file' adalah key di form-data postman
+    uploadKYC.single('ktp_file'),
     uploadKycDocument
+);
+
+router.get(
+    '/my-store',
+    authenticate, // Pastikan user login
+    getMyStore
+);
+
+router.put('/update', 
+    authenticate, 
+    uploadStoreMedia.fields([
+        { name: 'banner_file', maxCount: 1 },
+        { name: 'logo_file', maxCount: 1 }
+    ]), 
+    updateStore
+);
+
+/**
+ * Route: GET /api/stores/wallet
+ * Deskripsi: Mengambil saldo dan riwayat transaksi toko
+ * Proteksi: 
+ * 1. Login required
+ * 2. Role seller only
+ * 3. Hanya toko yang sudah di-approve (untuk mendapatkan req.store)
+ */
+router.get(
+    '/wallet',
+    authenticate,
+    authorize('seller'),
+    isStoreApproved, // Middleware ini krusial untuk menginjeksi data store ke request
+    getWallet
 );
 
 export default router;
