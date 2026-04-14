@@ -1,14 +1,43 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
+import db from '../models/index.js'; // Diperlukan untuk mengakses entitas Store (Information Expert)
 
 // ⚡ PERBAIKAN IMPORT: Konsistensi penamaan kapitalisasi
 import * as OrderService from '../services/orderService.js';
 import ShippingService from '../services/shippingService.js';
 
 export const calculateShipping = asyncHandler(async (req, res) => {
-    const { origin, destination, weight } = req.body;
+    // ⚡ PERBAIKAN: Menyesuaikan payload untuk integrasi Biteship
+    // origin, destination, weight diganti menjadi parameter spesifik berorientasi rute dan objek
+    const { store_id, destination_postal_code, items } = req.body;
 
-    const couriers = await ShippingService.calculateShippingCost(origin, destination, weight);
+    // Validasi Pre-condition
+    if (!store_id || !destination_postal_code || !items || !Array.isArray(items) || items.length === 0) {
+        const error = new Error('Data store_id, destination_postal_code, dan array items wajib diisi.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    // Mengambil objek asal dari database untuk memastikan integritas lokasi (Origin Postal Code)
+    const store = await db.Store.findByPk(store_id);
+    if (!store) {
+        const error = new Error('Toko asal tidak ditemukan di dalam sistem.');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    if (!store.postal_code) {
+        const error = new Error('Toko ini belum mengonfigurasi kode pos. Kalkulasi logistik dibatalkan.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    // Pendelegasian operasi ke Service Layer
+    const couriers = await ShippingService.calculateShippingCost(
+        store.postal_code,
+        destination_postal_code,
+        items
+    );
 
     return successResponse(
         res,
@@ -23,7 +52,7 @@ export const checkout = asyncHandler(async (req, res) => {
     const payload = req.body;
 
     // Catatan Analis: Logika validasi total harga produk vs database 
-    // mutlak harus dilakukan di dalam OrderService.createOrder()
+    // mutlak harus dilakukan di dalam OrderService.createOrder() untuk menjaga High Cohesion
     const order = await OrderService.createOrder(buyerId, payload);
 
     return successResponse(
@@ -77,7 +106,7 @@ export const complete = asyncHandler(async (req, res) => {
     const buyerId = req.user.id; // Diambil dari token
     const orderId = req.params.id;
 
-    const result = await orderService.completeOrder(orderId, buyerId);
+    // ⚡ PERBAIKAN BUG SEBELUMNYA: Mengubah 'orderService' menjadi 'OrderService' agar sesuai dengan namespace import
+    const result = await OrderService.completeOrder(orderId, buyerId);
     return successResponse(res, 200, 'Pesanan diselesaikan. Dana Escrow telah dirilis ke dompet Seller.', result);
 });
-

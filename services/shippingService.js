@@ -1,70 +1,59 @@
-/**
- * Shipping Service
- * Bertanggung jawab menangani integrasi dengan pihak ke-3 (RajaOngkir/Biteship).
- * Terisolasi dari OrderService agar pembuatan pesanan utama tidak ikut terganggu
- * jika API logistik sedang down.
- */
+import axios from 'axios';
+import { AppError } from '../middlewares/errorHandler.js';
 
-export const calculateShippingCost = async (origin, destination, weight) => {
-    // Validasi dasar
-    if (!origin || !destination || !weight) {
-        const error = new Error('Origin, destination, dan weight wajib diisi untuk kalkulasi ongkir.');
-        error.statusCode = 400;
-        throw error;
-    }
+const biteshipClient = axios.create({
+    baseURL: process.env.BITESHIP_BASE_URL,
+    headers: {
+        'Authorization': `Bearer ${process.env.BITESHIP_API_KEY}`,
+        'Content-Type': 'application/json'
+    },
+    timeout: 8000
+});
 
+// Kurir yang diaktifkan secara default (bisa dipindah ke konfigurasi DB di masa depan)
+const ALLOWED_COURIERS = ['jne', 'sicepat', 'jnt', 'gojek', 'grab'];
+
+export const calculateRates = async (originAreaId, destinationAreaId, items) => {
     try {
-        // TODO: Ganti blok ini dengan HTTP Request asli menggunakan Axios ke vendor logistik (RajaOngkir/Biteship)
-        // const response = await axios.post('https://api.rajaongkir.com/starter/cost', { ... });
+        // Memformat payload items sesuai standar Biteship
+        const formattedItems = items.map(item => ({
+            name: item.name,
+            description: item.description || '',
+            value: item.price,
+            length: item.length || 10,
+            width: item.width || 10,
+            height: item.height || 10,
+            weight: item.weight || 1000,
+            quantity: item.quantity
+        }));
 
-        // --- MOCK RESPONSE (Meniru struktur data vendor logistik) ---
-        // Asumsi kalkulasi dinamis berdasarkan berat (weight dalam gram)
-        const baseCost = 10000;
-        const weightMultiplier = Math.ceil(weight / 1000); // Pembulatan ke atas per KG
+        const payload = {
+            origin_area_id: originAreaId,
+            destination_area_id: destinationAreaId,
+            couriers: ALLOWED_COURIERS.join(','),
+            items: formattedItems
+        };
 
-        const availableCouriers = [
-            {
-                courier_code: 'jne',
-                courier_name: 'JNE (Jalur Nugraha Ekakurir)',
-                service_type: 'REG',
-                service_name: 'Layanan Reguler',
-                cost: baseCost * weightMultiplier,
-                etd: '2-3 Hari' // Estimated Time of Delivery
-            },
-            {
-                courier_code: 'jne',
-                courier_name: 'JNE (Jalur Nugraha Ekakurir)',
-                service_type: 'YES',
-                service_name: 'Yakin Esok Sampai',
-                cost: (baseCost + 8000) * weightMultiplier,
-                etd: '1 Hari'
-            },
-            {
-                courier_code: 'sicepat',
-                courier_name: 'SiCepat Ekspres',
-                service_type: 'HALU',
-                service_name: 'Harga Mulai Lima Ribu',
-                cost: (baseCost - 2000) * weightMultiplier,
-                etd: '3-5 Hari'
-            }
-        ];
+        const response = await biteshipClient.post('/v1/rates/couriers', payload);
 
-        // Simulasi delay jaringan (Network latency simulation)
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Mapping respon menjadi struktur yang bersih untuk Frontend
+        const rawRates = response.data.pricing || [];
 
-        return availableCouriers;
+        return rawRates.map(rate => ({
+            courier_company: rate.company,
+            courier_name: rate.courier_name,
+            service_type: rate.type,
+            service_name: rate.service_name,
+            price: rate.price,
+            duration: rate.duration,
+            estimated_delivery: rate.duration // Biasa direpresentasikan dalam string misal "1 - 2 days"
+        }));
+
     } catch (error) {
-        // Log error ke sistem internal (Sentry/Datadog) agar tidak bocor ke user
-        console.error('[ShippingService Error]:', error.message);
-
-        const customError = new Error('Gagal terhubung dengan penyedia layanan logistik. Silakan coba lagi.');
-        customError.statusCode = 503; // Service Unavailable
-        throw customError;
+        console.error('[Biteship Rates Error]:', error.response?.data || error.message);
+        throw new AppError(
+            error.response?.data?.error || 'Gagal menghitung tarif pengiriman.',
+            error.response?.status || 500
+        );
     }
 };
-
-const ShippingService = {
-    calculateShippingCost
-};
-
-export default ShippingService;

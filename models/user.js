@@ -61,6 +61,9 @@ export default class User extends Model {
       foreignKey: 'buyer_id',
       as: 'buyerOrders' 
     });
+    this.hasMany(models.Address, { 
+      foreignKey: 'user_id', 
+      as: 'addresses' });
   }
 
   /**
