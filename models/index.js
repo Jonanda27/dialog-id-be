@@ -13,6 +13,9 @@ import OrderItem from './OrderItem.js';
 import Escrow from './Escrow.js';
 import WalletTransaction from './WalletTransaction.js';
 import GradingRequest from './GradingRequest.js';
+import AddressInit from './Address.js';
+import Review from './Review.js';
+import ReviewMedia from './ReviewMedia.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
