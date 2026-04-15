@@ -1,5 +1,5 @@
 import db from '../models/index.js';
-import { AppError } from '../middlewares/errorHandler.js';
+import { errorHandler } from '../middlewares/errorHandler.js';
 
 const { Address, sequelize } = db;
 
@@ -52,7 +52,7 @@ export const deleteAddress = async (addressId, userId) => {
     if (!address) throw new AppError('Alamat tidak ditemukan', 404);
 
     if (address.is_primary) {
-        throw new AppError('Tidak dapat menghapus alamat utama. Jadikan alamat lain sebagai alamat utama terlebih dahulu.', 400);
+        throw new errorHandler ('Tidak dapat menghapus alamat utama. Jadikan alamat lain sebagai alamat utama terlebih dahulu.', 400);
     }
 
     await address.destroy(); // Soft delete akan aktif karena opsi paranoid: true di Model

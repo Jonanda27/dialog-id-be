@@ -1,66 +1,65 @@
 import db from '../models/index.js';
+import * as shippingService from './shippingService.js'; // Import layanan logistik internal
 
 class OrderService {
     /**
      * Membuat pesanan baru dengan validasi stok, toko tunggal, dan penanganan biaya.
-     * Menggunakan Pessimistic Locking dan Transaksi ACID.
+     * Menggunakan Pessimistic Locking dan Transaksi ACID yang kebal manipulasi.
      */
     static async createOrder(buyerId, payload) {
-        // ⚡ PERBAIKAN: Mengekstrak seluruh data yang dikirim dari Frontend sesuai skema Zod
-        const { items, shipping_address, courier_code, service_type, shipping_fee } = payload;
+        // ⚡ HARDENING TAHAP 4: Mengekstrak payload terstandarisasi (snake_case)
+        const { items, address_id, store_id, courier_code, service_type, shipping_fee } = payload;
 
-        // Memulai Transaksi Database (ACID)
+        // Memulai Transaksi Database Ekstra Ketat (ACID)
         const t = await db.sequelize.transaction();
 
         try {
             let subtotal = 0;
             let totalGradingFee = 0;
-            const shippingFee = 15000; // Simulasi statis ongkir
-            let storeId = null;
             const orderItemsData = [];
+            const shippingItemsPayload = [];
 
-            // ⚡ PERBAIKAN: Gunakan ongkos kirim dari payload Frontend
-            // Catatan Analis: Untuk skala produksi, shipping_fee ini idealnya diverifikasi ulang ke API Logistik di server
-            const actualShippingFee = Number(shipping_fee);
+            // 1. Validasi Keberadaan Alamat Tujuan & Asal untuk Kalkulasi Biteship
+            const destinationAddress = await db.Address.findOne({
+                where: { id: address_id, user_id: buyerId },
+                transaction: t
+            });
+            if (!destinationAddress) throw { statusCode: 404, message: 'Alamat pengiriman tidak valid atau tidak ditemukan.' };
 
-            // Loop setiap item dalam keranjang
+            const store = await db.Store.findByPk(store_id, {
+                include: [{ model: db.Address, as: 'originAddress' }],
+                transaction: t
+            });
+            if (!store || !store.originAddress) throw { statusCode: 404, message: 'Data toko atau alamat asal toko tidak ditemukan.' };
+
+            // 2. Pessimistic Locking & Server-Side Pricing (Mencegah Manipulasi Harga)
             for (const item of items) {
-                // 1. Pessimistic Lock: Kunci baris produk ini agar tidak overselling
-                const product = await db.Product.findByPk(item.product_id, {
-                    transaction: t,
-                    lock: t.LOCK.UPDATE
+                // ⚡ t.LOCK.UPDATE: Mengunci baris produk. Cegah Race Condition.
+                const product = await db.Product.findOne({
+                    where: { id: item.product_id, store_id: store.id },
+                    lock: t.LOCK.UPDATE,
+                    transaction: t
                 });
 
                 if (!product || !product.is_active) {
                     throw { statusCode: 404, message: `Produk dengan ID ${item.product_id} tidak ditemukan atau tidak aktif.` };
                 }
 
-                // Validasi single-store (1 Checkout = 1 Toko)
-                if (!storeId) storeId = product.store_id;
-                if (storeId !== product.store_id) {
-                    throw { statusCode: 400, message: 'Semua produk dalam satu pesanan harus berasal dari toko yang sama.' };
-                }
-
-                // 2. Stock Validation
+                // Mencegah Overselling (Stok Habis)
                 if (product.stock < item.qty) {
-                    throw { statusCode: 400, message: `Stok produk ${product.name} tidak mencukupi. Sisa: ${product.stock}` };
+                    throw { statusCode: 400, message: `Stok produk ${product.name} tidak mencukupi. Hanya tersisa: ${product.stock}.` };
                 }
 
-                // 3. Lazy Evaluation: Cek apakah Buyer ini pernah request grading dan sudah dipenuhi oleh Seller
+                // Bundling Logic: Cek Grading Request yang fulfilled
                 const gradingRequest = await db.GradingRequest.findOne({
-                    where: {
-                        buyer_id: buyerId,
-                        product_id: product.id,
-                        status: 'fulfilled'
-                    },
+                    where: { buyer_id: buyerId, product_id: product.id, status: 'fulfilled' },
                     transaction: t
                 });
 
-                // Jika ada request grading terpenuhi, bebankan biaya 25.000 per jenis barang
-                const itemGradingFee = gradingRequest ? 25000 : 0;
-                totalGradingFee += itemGradingFee;
+                // Bebankan biaya grading 25.000 jika request grading terpenuhi
+                if (gradingRequest) totalGradingFee += 25000;
 
-                // 4. Kalkulasi Harga
+                // ⚡ Server-Side Calc: Harga dikalikan murni dari Database
                 const itemSubtotal = parseFloat(product.price) * item.qty;
                 subtotal += itemSubtotal;
 
@@ -69,36 +68,73 @@ class OrderService {
                     product_id: product.id,
                     qty: item.qty,
                     price_at_purchase: product.price,
-                    grading_at_purchase: product.grading || 'Raw'
+                    grading_at_purchase: product.metadata?.grading || 'Raw'
                 });
 
-                // 5. Kurangi Stok Produk
+                // ⚡ CORE FIX TAHAP 4: Siapkan data Fisik Absolut untuk Biteship
+                shippingItemsPayload.push({
+                    name: product.name,
+                    value: Number(product.price), // Biteship menggunakan properti 'value' untuk harga/asuransi
+                    weight: product.product_weight,
+                    length: product.product_length,
+                    width: product.product_width,
+                    height: product.product_height,
+                    quantity: item.qty
+                });
+
+                // Kurangi Stok Secara Aman di dalam transaksi
                 await product.update({ stock: product.stock - item.qty }, { transaction: t });
             }
 
+            // 3. ⚡ SHIPPING RE-VALIDATION (The Handshake Check)
+            // Backend menembak API Biteship secara internal untuk membuktikan klaim Frontend
+            const availableRates = await shippingService.calculateRates(
+                store.originAddress.biteship_area_id,
+                destinationAddress.biteship_area_id,
+                shippingItemsPayload
+            );
+
+            const matchedRate = availableRates.find(
+                rate => rate.courier_company === courier_code && rate.service_type === service_type
+            );
+
+            if (!matchedRate) {
+                throw { statusCode: 400, message: 'Layanan kurir yang dipilih tidak tersedia untuk rute ini.' };
+            }
+
+            // ⚡ Mismatch Check: Tolak transaksi dan lempar flag 409 Conflict agar Frontend me-refresh
+            if (Number(matchedRate.price) !== Number(shipping_fee)) {
+                throw {
+                    statusCode: 409,
+                    message: 'Harga ongkos kirim telah berubah. Silakan muat ulang perhitungan ongkir Anda.'
+                };
+            }
+
+            const actualShippingFee = matchedRate.price;
             const grandTotal = subtotal + actualShippingFee + totalGradingFee;
 
-            // ⚡ TACTICAL FIX: Karena tabel orders tidak punya kolom courier_code, 
-            // kita sematkan info kurir ke awal teks alamat pengiriman agar Seller bisa membacanya.
-            const fullShippingAddress = `[${courier_code.toUpperCase()} - ${service_type.toUpperCase()}] ${shipping_address}`;
+            // Merakit alamat lengkap beserta ID/Kode pos dan Info Kurir
+            const fullShippingAddress = `[${courier_code.toUpperCase()} - ${service_type.toUpperCase()}] ${destinationAddress.address_detail}, Kec. ${destinationAddress.district}, Kab/Kota. ${destinationAddress.city}, Prov. ${destinationAddress.province}, ${destinationAddress.postal_code}`;
 
-            // 6. Create Order Utama
+            // 4. Create Order Utama
             const order = await db.Order.create({
                 buyer_id: buyerId,
-                store_id: storeId,
+                store_id: store.id,
                 subtotal,
                 shipping_fee: actualShippingFee,
                 grading_fee: totalGradingFee,
                 grand_total: grandTotal,
                 status: 'pending_payment',
-                shipping_address: fullShippingAddress
+                shipping_address: fullShippingAddress,
+                courier_company: courier_code, // Tersimpan permanen di DB
+                service_type: service_type     // Tersimpan permanen di DB
             }, { transaction: t });
 
-            // 7. Insert Order Items dengan Order ID yang baru terbuat
+            // 5. Insert Order Items dengan Order ID yang baru terbuat
             const itemsWithOrderId = orderItemsData.map(item => ({ ...item, order_id: order.id }));
             await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
 
-            // 8. Create Escrow Record (Penahanan Dana)
+            // 6. Create Escrow Record (Penahanan Dana)
             await db.Escrow.create({
                 order_id: order.id,
                 amount_held: grandTotal,
@@ -114,12 +150,12 @@ class OrderService {
             await t.rollback();
             const err = new Error(error.message || 'Terjadi kesalahan sistem saat checkout');
             err.statusCode = error.statusCode || 500;
-            throw err; // Lempar ke Controller
+            throw err; // Lempar ke Controller untuk ditangkap dan diteruskan ke FE
         }
     }
 
     /**
-     * ⚡ BARU: Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)
+     * Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)
      */
     static async getOrderById(orderId, userId) {
         const order = await db.Order.findByPk(orderId, {
@@ -149,60 +185,7 @@ class OrderService {
     }
 
     /**
-     * ⚡ BARU: Mengambil riwayat pesanan milik pembeli (Buyer)
-     */
-    static async getBuyerOrders(buyerId, statusFilter) {
-        const whereClause = { buyer_id: buyerId };
-        if (statusFilter) whereClause.status = statusFilter;
-
-        return await db.Order.findAll({
-            where: whereClause,
-            include: [
-                { model: db.Store, as: 'store' },
-                {
-                    model: db.OrderItem,
-                    as: 'items',
-                    include: [
-                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
-                    ]
-                }
-            ],
-            order: [['created_at', 'DESC']]
-        });
-    }
-
-    /**
-     * ⚡ BARU: Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)
-     */
-    static async getOrderById(orderId, userId) {
-        const order = await db.Order.findByPk(orderId, {
-            include: [
-                { model: db.User, as: 'buyer', attributes: ['id', 'full_name', 'email'] },
-                { model: db.Store, as: 'store' },
-                {
-                    model: db.OrderItem,
-                    as: 'items',
-                    include: [
-                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
-                    ]
-                }
-            ]
-        });
-
-        if (!order) {
-            throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
-        }
-
-        // Otorisasi: Hanya pembeli atau pemilik toko yang boleh melihat detail ini
-        if (order.buyer_id !== userId && order.store_id !== userId) {
-            throw { statusCode: 403, message: 'Akses ditolak.' };
-        }
-
-        return order;
-    }
-
-    /**
-     * ⚡ BARU: Mengambil riwayat pesanan milik pembeli (Buyer)
+     * Mengambil riwayat pesanan milik pembeli (Buyer)
      */
     static async getBuyerOrders(buyerId, statusFilter) {
         const whereClause = { buyer_id: buyerId };
@@ -226,7 +209,6 @@ class OrderService {
 
     /**
      * Mengambil daftar pesanan yang masuk ke toko.
-     * Menerapkan Eager Loading untuk detail pembeli dan item produk.
      */
     static async getStoreOrders(storeId, statusFilter) {
         const whereClause = { store_id: storeId };
@@ -242,7 +224,7 @@ class OrderService {
                 },
                 {
                     model: db.OrderItem,
-                    as: 'items', // Sesuai relasi hasMany di model Order
+                    as: 'items',
                     include: [
                         {
                             model: db.Product,
@@ -260,7 +242,6 @@ class OrderService {
      * Memproses pengiriman pesanan dan input resi.
      */
     static async shipOrder(orderId, storeId, trackingNumber) {
-        // PERBAIKAN ARSITEKTUR: Tidak perlu JOIN ke tabel Store. Cukup ambil ordernya.
         const order = await db.Order.findByPk(orderId);
 
         if (!order) {
@@ -287,7 +268,6 @@ class OrderService {
      * Menggunakan Transaksi ACID.
      */
     static async completeOrder(orderId, buyerId) {
-        // Memulai Transaksi Database untuk integritas Finansial
         const t = await db.sequelize.transaction();
 
         try {
@@ -315,14 +295,12 @@ class OrderService {
             await escrow.save({ transaction: t });
 
             // 3. Kalkulasi Mutasi Finansial
-            // amount_to_seller = (Subtotal + GradingFee) - (AdminFee 3%) + Ongkir
             const subtotal = Number(order.subtotal);
             const gradingFee = Number(order.grading_fee);
             const shippingFee = Number(order.shipping_fee);
 
             const baseAmount = subtotal + gradingFee;
             const adminFee = baseAmount * 0.03;
-            // Sesuai instruksi: Masukkan total bersih + ongkir ke seller untuk simulasi
             const netToSeller = (baseAmount - adminFee) + shippingFee;
 
             // 4. Catat Mutasi ke Wallet Transactions (CREDIT)

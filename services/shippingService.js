@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AppError } from '../middlewares/errorHandler.js';
+import { errorHandler } from '../middlewares/errorHandler.js';
 
 const biteshipClient = axios.create({
     baseURL: process.env.BITESHIP_BASE_URL,
@@ -51,7 +51,7 @@ export const calculateRates = async (originAreaId, destinationAreaId, items) => 
 
     } catch (error) {
         console.error('[Biteship Rates Error]:', error.response?.data || error.message);
-        throw new AppError(
+        throw new errorHandler(
             error.response?.data?.error || 'Gagal menghitung tarif pengiriman.',
             error.response?.status || 500
         );

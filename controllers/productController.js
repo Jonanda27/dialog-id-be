@@ -1,6 +1,9 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
 import ProductService from '../services/productService.js';
+import db from '../models/index.js'; // Ditambahkan untuk kebutuhan kueri massal (Auto-Healing)
+
+const { Product } = db;
 
 /**
  * Mendapatkan Detail Produk (Public/PDP)
@@ -156,4 +159,33 @@ export const bulkCreateProducts = asyncHandler(async (req, res) => {
 
     const result = await ProductService.bulkCreateProducts(preparedData);
     return successResponse(res, 201, `${result.length} Produk berhasil diimport`, result);
+});
+
+/**
+ * --- TAHAP 3: PROTOKOL AUTO-HEALING KERANJANG ---
+ * Endpoint Sinkronisasi Data Keranjang (State Auto-Healing)
+ * Mengambil harga, stok, dan atribut fisik terbaru untuk divalidasi oleh Frontend di halaman Checkout.
+ */
+export const syncProducts = asyncHandler(async (req, res) => {
+    const { product_ids } = req.body;
+
+    if (!Array.isArray(product_ids) || product_ids.length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Parameter product_ids harus berupa array dan tidak boleh kosong.'
+        });
+    }
+
+    // Ambil hanya kolom krusial untuk sinkronisasi finansial & logistik Biteship
+    const latestProducts = await Product.findAll({
+        where: { id: product_ids },
+        attributes: ['id', 'price', 'stock', 'product_weight', 'is_active'],
+    });
+
+    return successResponse(
+        res,
+        200,
+        'Berhasil melakukan sinkronisasi data produk',
+        latestProducts
+    );
 });

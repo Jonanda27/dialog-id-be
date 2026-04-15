@@ -1,11 +1,15 @@
-import { errorResponse } from '../utils/apiResponse.js';
+import { AppError } from './errorHandler.js';
 
-export const verifyApiKey = (req, res, next) => {
-    const apiKey = req.headers['x-api-key'];
-    const validKey = process.env.INTERNAL_API_KEY; // Tambahkan ini di .env
+export const verifyInternalApiKey = (req, res, next) => {
+    const apiKey = req.headers['x-internal-api-key'];
 
-    if (!apiKey || apiKey !== validKey) {
-        return errorResponse(res, 401, 'Akses Internal Ditolak. Invalid API Key.');
+    if (!apiKey) {
+        return next(new AppError('Akses ditolak: Internal API Key tidak ditemukan.', 401));
     }
+
+    if (apiKey !== process.env.INTERNAL_API_KEY) {
+        return next(new AppError('Akses ditolak: Internal API Key tidak valid.', 403));
+    }
+
     next();
 };

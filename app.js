@@ -18,6 +18,8 @@ import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js'; // <-- BARU: Import Category Routes
+import addressRoutes from './routes/addressRoutes.js';   // <--- PASTIKAN ADA
+import shippingRoutes from './routes/shippingRoutes.js'; // <--- PASTIKAN ADA
 
 // Load environment variables
 dotenv.config();
@@ -104,6 +106,8 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/categories', categoryRoutes); // <-- BARU: Mount Category Routes
+app.use('/api/v1/addresses', addressRoutes);   // <--- PASANG INI
+app.use('/api/v1/shipping', shippingRoutes);
 
 
 // ==========================================
