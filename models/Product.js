@@ -30,6 +30,31 @@ export default class Product extends Model {
                 defaultValue: 1,
                 allowNull: false,
             },
+            // --- ATRIBUT FISIK & LOGISTIK (NEW) ---
+            product_weight: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+                comment: 'Berat aktual produk dalam Gram',
+            },
+            product_length: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+                comment: 'Panjang dimensi produk dalam Cm',
+            },
+            product_width: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+                comment: 'Lebar dimensi produk dalam Cm',
+            },
+            product_height: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+                comment: 'Tinggi dimensi produk dalam Cm',
+            },
             // --- GAME CHANGER: JSONB METADATA ---
             // Menggantikan artist, release_year, label, matrix_number, format, grading, dan condition_notes
             metadata: {

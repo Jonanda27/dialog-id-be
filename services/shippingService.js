@@ -1,70 +1,79 @@
-/**
- * Shipping Service
- * Bertanggung jawab menangani integrasi dengan pihak ke-3 (RajaOngkir/Biteship).
- * Terisolasi dari OrderService agar pembuatan pesanan utama tidak ikut terganggu
- * jika API logistik sedang down.
- */
+import axios from 'axios';
+import { errorHandler } from '../middlewares/errorHandler.js';
 
-export const calculateShippingCost = async (origin, destination, weight) => {
-    // Validasi dasar
-    if (!origin || !destination || !weight) {
-        const error = new Error('Origin, destination, dan weight wajib diisi untuk kalkulasi ongkir.');
-        error.statusCode = 400;
+const biteshipClient = axios.create({
+    baseURL: process.env.BITESHIP_BASE_URL,
+    headers: {
+        'Authorization': `Bearer ${process.env.BITESHIP_API_KEY}`,
+        'Content-Type': 'application/json'
+    },
+    timeout: 8000
+});
+
+// Kurir yang diaktifkan secara default (bisa dipindah ke konfigurasi DB di masa depan)
+const ALLOWED_COURIERS = ['jne', 'sicepat', 'jnt', 'gojek', 'grab'];
+
+
+// File: services/shippingService.js
+
+export const calculateRates = async (originAreaId, destinationAreaId, items) => {
+    try {
+        const payload = {
+            origin_area_id: originAreaId,
+            destination_area_id: destinationAreaId,
+            couriers: 'jne,sicepat,jnt', // Kurangi list kurir untuk tes awal
+            items: items.map(item => ({
+                name: item.name,
+                value: Number(item.price),
+                weight: Number(item.weight) || 500,
+                quantity: Number(item.quantity) || 1,
+                length: 10, width: 10, height: 10
+            }))
+        };
+
+        console.log("Kirim Payload ke Biteship:", JSON.stringify(payload, null, 2));
+
+        const response = await biteshipClient.post('/v1/rates/couriers', payload);
+        return response.data.pricing || [];
+
+    } catch (error) {
+        // --- TAMBAHKAN LOG INI ---
+        if (error.response) {
+            // Pesan spesifik dari Biteship (misal: "origin_area_id is invalid")
+            console.error("Detail Error Biteship (400):", error.response.data);
+        }
         throw error;
     }
+};
 
+export const searchAreas = async (input) => {
     try {
-        // TODO: Ganti blok ini dengan HTTP Request asli menggunakan Axios ke vendor logistik (RajaOngkir/Biteship)
-        // const response = await axios.post('https://api.rajaongkir.com/starter/cost', { ... });
-
-        // --- MOCK RESPONSE (Meniru struktur data vendor logistik) ---
-        // Asumsi kalkulasi dinamis berdasarkan berat (weight dalam gram)
-        const baseCost = 10000;
-        const weightMultiplier = Math.ceil(weight / 1000); // Pembulatan ke atas per KG
-
-        const availableCouriers = [
-            {
-                courier_code: 'jne',
-                courier_name: 'JNE (Jalur Nugraha Ekakurir)',
-                service_type: 'REG',
-                service_name: 'Layanan Reguler',
-                cost: baseCost * weightMultiplier,
-                etd: '2-3 Hari' // Estimated Time of Delivery
-            },
-            {
-                courier_code: 'jne',
-                courier_name: 'JNE (Jalur Nugraha Ekakurir)',
-                service_type: 'YES',
-                service_name: 'Yakin Esok Sampai',
-                cost: (baseCost + 8000) * weightMultiplier,
-                etd: '1 Hari'
-            },
-            {
-                courier_code: 'sicepat',
-                courier_name: 'SiCepat Ekspres',
-                service_type: 'HALU',
-                service_name: 'Harga Mulai Lima Ribu',
-                cost: (baseCost - 2000) * weightMultiplier,
-                etd: '3-5 Hari'
+        const response = await biteshipClient.get('/v1/maps/areas', {
+            params: {
+                countries: 'ID', // Batasi pencarian hanya untuk wilayah Indonesia
+                input: input,
+                type: 'single'   // Parameter wajib untuk Sandbox Biteship
             }
-        ];
+        });
 
-        // Simulasi delay jaringan (Network latency simulation)
-        await new Promise(resolve => setTimeout(resolve, 300));
+        const rawAreas = response.data.areas || [];
 
-        return availableCouriers;
+        // Mapping raw payload Biteship menjadi standar DTO (Data Transfer Object)
+        // yang disepakati oleh interface BiteshipArea di Frontend.
+        const mappedAreas = rawAreas.map(area => ({
+            biteship_area_id: area.id,
+            formatted_name: area.name,
+            province: area.administrative_division_level_1_name,
+            city: area.administrative_division_level_2_name,
+            district: area.administrative_division_level_3_name,
+            postal_code: area.postal_code
+        }));
+
+        return mappedAreas;
     } catch (error) {
-        // Log error ke sistem internal (Sentry/Datadog) agar tidak bocor ke user
-        console.error('[ShippingService Error]:', error.message);
+        console.error('[Biteship Search Areas Error]:', error.response?.data || error.message);
 
-        const customError = new Error('Gagal terhubung dengan penyedia layanan logistik. Silakan coba lagi.');
-        customError.statusCode = 503; // Service Unavailable
-        throw customError;
+        // Melempar error agar dapat ditangkap oleh asyncHandler di controller
+        throw new Error(error.response?.data?.error || 'Gagal mencari data area pengiriman.');
     }
 };
-
-const ShippingService = {
-    calculateShippingCost
-};
-
-export default ShippingService;

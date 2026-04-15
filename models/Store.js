@@ -80,23 +80,26 @@ export default class Store extends Model {
     );
   }
 
-  static associate(models) {
-    this.belongsTo(models.User, {
-      foreignKey: "user_id",
-      as: "owner",
-    });
-    this.hasMany(models.Product, {
-      foreignKey: "store_id",
-      as: "products",
-    });
-    this.hasMany(models.Order, {
-      foreignKey: "store_id",
-      as: "orders",
-    });
-    this.hasMany(models.WalletTransaction, {
-      foreignKey: "store_id",
-      as: "walletTransactions",
-    });
-    this.hasMany(models.Review, { foreignKey: 'store_id', as: 'reviews' });
-  }
+    static associate(models) {
+        this.belongsTo(models.User, {
+            foreignKey: 'user_id',
+            as: 'owner'
+        });
+        this.hasMany(models.Product, {
+            foreignKey: 'store_id', 
+            as: 'products'
+        });
+        this.hasMany(models.Order, {
+            foreignKey: 'store_id', 
+            as: 'orders' 
+        });
+        this.hasMany(models.WalletTransaction, { 
+            foreignKey: 'store_id', 
+            as: 'walletTransactions' 
+        });
+        this.hasMany(models.Review, { foreignKey: 'store_id', as: 'reviews' });
+        this.belongsTo(models.Address, { 
+            foreignKey: 'origin_address_id', 
+            as: 'originAddress' });
+    }
 }

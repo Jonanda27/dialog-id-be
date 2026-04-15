@@ -22,9 +22,15 @@ export const loginSchema = z.object({
 /**
  * Middleware untuk memvalidasi request body/query/params menggunakan Zod
  */
+// validations/authValidation.js
+
 export const validateRequest = (schema) => {
     return (req, res, next) => {
         try {
+            // LOG UNTUK DEBUG (Hapus kalau sudah jalan)
+            console.log("DATA MASUK KE VALIDATOR:", req.body);
+            // Kita validasi langsung req.body, req.query, dan req.params secara terpisah
+            // Jika skema punya properti 'body', 'query', atau 'params', dia akan validasi itu.
             schema.parse({
                 body: req.body,
                 query: req.query,
@@ -32,7 +38,22 @@ export const validateRequest = (schema) => {
             });
             next();
         } catch (error) {
-            // Akan ditangkap oleh Global Error Handler di app.js
+            // Log error biar kita tahu persis apa yang salah
+            console.error("[ZOD ERROR]:", JSON.stringify(error.errors, null, 2));
+            next(error);
+        }
+    };
+};
+
+export const validateRequestOrder = (schema) => {
+    return (req, res, next) => {
+        try {
+            // LANGSUNG tembak ke req.body. 
+            // Gak usah pake { body: req.body, query: ... } karena itu yang bikin lo pusing dari tadi.
+            schema.parse(req.body);
+            next();
+        } catch (error) {
+            console.error("ZOD NYEBELIN:", error.errors);
             next(error);
         }
     };

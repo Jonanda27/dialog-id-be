@@ -19,6 +19,8 @@ import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js'; 
 import reviewRoutes from './routes/reviewRoutes.js';
+import addressRoutes from './routes/addressRoutes.js';   // <--- PASTIKAN ADA
+import shippingRoutes from './routes/shippingRoutes.js'; // <--- PASTIKAN ADA
 
 // Load environment variables
 dotenv.config();
@@ -101,11 +103,13 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/products', productRoutes);
+app.use('/api/v1/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/categories', categoryRoutes); 
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/v1/addresses', addressRoutes);   // <--- PASANG INI
+app.use('/api/v1/shipping', shippingRoutes);
 
 
 // ==========================================
