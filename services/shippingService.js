@@ -13,54 +13,38 @@ const biteshipClient = axios.create({
 // Kurir yang diaktifkan secara default (bisa dipindah ke konfigurasi DB di masa depan)
 const ALLOWED_COURIERS = ['jne', 'sicepat', 'jnt', 'gojek', 'grab'];
 
+
+// File: services/shippingService.js
+
 export const calculateRates = async (originAreaId, destinationAreaId, items) => {
     try {
-        // Memformat payload items sesuai standar Biteship
-        const formattedItems = items.map(item => ({
-            name: item.name,
-            description: item.description || '',
-            value: item.price,
-            length: item.length || 10,
-            width: item.width || 10,
-            height: item.height || 10,
-            weight: item.weight || 1000,
-            quantity: item.quantity
-        }));
-
         const payload = {
             origin_area_id: originAreaId,
             destination_area_id: destinationAreaId,
-            couriers: ALLOWED_COURIERS.join(','),
-            items: formattedItems
+            couriers: 'jne,sicepat,jnt', // Kurangi list kurir untuk tes awal
+            items: items.map(item => ({
+                name: item.name,
+                value: Number(item.price),
+                weight: Number(item.weight) || 500,
+                quantity: Number(item.quantity) || 1,
+                length: 10, width: 10, height: 10
+            }))
         };
 
+        console.log("Kirim Payload ke Biteship:", JSON.stringify(payload, null, 2));
+
         const response = await biteshipClient.post('/v1/rates/couriers', payload);
-
-        // Mapping respon menjadi struktur yang bersih untuk Frontend
-        const rawRates = response.data.pricing || [];
-
-        return rawRates.map(rate => ({
-            courier_company: rate.company,
-            courier_name: rate.courier_name,
-            service_type: rate.type,
-            service_name: rate.service_name,
-            price: rate.price,
-            duration: rate.duration,
-            estimated_delivery: rate.duration // Biasa direpresentasikan dalam string misal "1 - 2 days"
-        }));
+        return response.data.pricing || [];
 
     } catch (error) {
-        console.error('[Biteship Rates Error]:', error.response?.data || error.message);
-        throw new errorHandler(
-            error.response?.data?.error || 'Gagal menghitung tarif pengiriman.',
-            error.response?.status || 500
-        );
+        // --- TAMBAHKAN LOG INI ---
+        if (error.response) {
+            // Pesan spesifik dari Biteship (misal: "origin_area_id is invalid")
+            console.error("Detail Error Biteship (400):", error.response.data);
+        }
+        throw error;
     }
 };
-
-// File: services/shippingService.js
-
-// File: services/shippingService.js
 
 export const searchAreas = async (input) => {
     try {

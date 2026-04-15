@@ -42,13 +42,20 @@ const models = {
   Address: AddressInit(sequelize),
 };
 
-// Eksekusi fungsi associate() jika ada di dalam model
-// Di sinilah relasi Category -> SubCategory -> Product dirangkai
-Object.values(models).forEach((model) => {
+// Tambahkan baris ini sebelum Object.values
+const db = {
+  ...models,
+  sequelize, // Masukkan instance koneksi ke sini
+  Sequelize
+};
+
+// Eksekusi fungsi associate() menggunakan objek db yang baru
+Object.values(db).forEach((model) => {
   if (typeof model.associate === 'function') {
-    model.associate(models);
+    model.associate(db);
   }
 });
 
+
 export { sequelize, Sequelize };
-export default models;
+export default db;

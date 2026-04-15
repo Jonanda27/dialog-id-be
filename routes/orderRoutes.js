@@ -9,7 +9,7 @@ import {
     getOrderById
 } from '../controllers/orderController.js';
 import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
-import { validateRequest } from '../validations/authValidation.js';
+import { validateRequest, validateRequestOrder } from '../validations/authValidation.js';
 import { checkoutSchema } from '../validations/orderValidation.js';
 
 const router = express.Router();
@@ -167,7 +167,7 @@ router.post(
     '/checkout',
     authenticate,
     authorize('buyer'),
-    validateRequest(checkoutSchema),
+    validateRequestOrder(checkoutSchema),
     checkout
 );
 
