@@ -1,6 +1,8 @@
 import express from 'express';
-import { request, fulfill } from '../controllers/gradingController.js';
+import { request, getStoreRequests, fulfill, streamMedia } from '../controllers/gradingController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
+import { isStoreApproved } from '../middlewares/store.js';
+import upload from '../middlewares/upload.js';
 
 const router = express.Router();
 
@@ -8,7 +10,7 @@ const router = express.Router();
  * @swagger
  * /api/grading/request:
  *   post:
- *     summary: Request grading video (Buyer)
+ *     summary: Request grading video (Buyer - Fase 1)
  *     tags: [Grading & Dispute]
  *     security:
  *       - bearerAuth: []
@@ -26,13 +28,13 @@ const router = express.Router();
  *                 format: uuid
  *     responses:
  *       201:
- *         description: Grading berhasil direquest (Gratis)
+ *         description: Grading berhasil direquest (Created)
  *       400:
- *         description: Sudah pernah request untuk produk ini (Bad Request)
+ *         description: Batas anti-spam tercapai atau produk duplikat (Bad Request)
  *       401:
  *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
  *       403:
- *         description: Akses ditolak, khusus role buyer (Forbidden)
+ *         description: Akses ditolak, hanya untuk Buyer (Forbidden)
  *       404:
  *         description: Produk tidak ditemukan (Not Found)
  */
@@ -40,9 +42,70 @@ router.post('/request', authenticate, authorize('buyer'), request);
 
 /**
  * @swagger
+ * /api/grading/store-requests:
+ *   get:
+ *     summary: Mendapatkan daftar permintaan grading yang masuk ke toko penjual
+ *     tags: [Grading & Dispute]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Berhasil memuat daftar permintaan grading (OK)
+ *       401:
+ *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
+ *       403:
+ *         description: Akses ditolak, hanya untuk Seller terverifikasi (Forbidden)
+ *       404:
+ *         description: Data tidak ditemukan (Not Found)
+ */
+router.get('/store-requests', authenticate, authorize('seller'), isStoreApproved, getStoreRequests);
+
+/**
+ * @swagger
  * /api/grading/{id}/fulfill:
  *   patch:
- *     summary: Seller mengunggah video grading
+ *     summary: Seller mengunggah video grading (Fase 2)
+ *     tags: [Grading & Dispute]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - video
+ *             properties:
+ *               video:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Video grading berhasil diunggah (OK)
+ *       400:
+ *         description: File video tidak valid atau tidak ditemukan (Bad Request)
+ *       401:
+ *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
+ *       403:
+ *         description: Akses ditolak, bukan pemilik toko terkait (Forbidden)
+ *       404:
+ *         description: Tiket grading tidak ditemukan (Not Found)
+ */
+router.patch('/:id/fulfill', authenticate, authorize('seller'), isStoreApproved, upload.single('video'), fulfill);
+
+/**
+ * @swagger
+ * /api/grading/{id}/stream:
+ *   get:
+ *     summary: Endpoint proksi privat untuk memutar video grading
  *     tags: [Grading & Dispute]
  *     security:
  *       - bearerAuth: []
@@ -55,16 +118,16 @@ router.post('/request', authenticate, authorize('buyer'), request);
  *           format: uuid
  *     responses:
  *       200:
- *         description: Grading terpenuhi (Fulfilled)
- *       400:
- *         description: Data input tidak valid (Bad Request)
+ *         description: Video Stream Output (OK)
+ *       206:
+ *         description: Partial Video Stream untuk fitur Seek (Partial Content)
  *       401:
  *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
  *       403:
- *         description: Akses ditolak, produk bukan milik seller tersebut (Forbidden)
+ *         description: Ditolak, user tidak terkait dengan tiket ini (Forbidden)
  *       404:
- *         description: Grading request tidak ditemukan (Not Found)
+ *         description: Video atau tiket tidak ditemukan (Not Found)
  */
-router.patch('/:id/fulfill', authenticate, authorize('seller'), fulfill);
+router.get('/:id/stream', authenticate, streamMedia);
 
 export default router;
