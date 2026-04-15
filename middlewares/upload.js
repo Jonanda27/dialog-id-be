@@ -102,3 +102,29 @@ export const uploadStoreMedia = multer({
     limits: { fileSize: 3 * 1024 * 1024 }, // Maksimal 3MB untuk banner/logo
     fileFilter: fileFilter
 });
+
+// ==========================================
+// KONFIGURASI UPLOAD FOTO ULASAN (REVIEW)
+// ==========================================
+const reviewDir = 'public/uploads/reviews';
+
+if (!fs.existsSync(reviewDir)) {
+    fs.mkdirSync(reviewDir, { recursive: true });
+}
+
+const reviewStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, reviewDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, 'review-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+// Middleware multer untuk foto ulasan (Maksimal 3 foto, 5MB per foto)
+export const uploadReviewPhotos = multer({
+    storage: reviewStorage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: fileFilter 
+});

@@ -226,6 +226,42 @@ export const bulkCreateProducts = async (products) => {
     }
 };
 
+/**
+ * Mendapatkan semua produk dari seluruh toko untuk kebutuhan Admin.
+ * Tidak memfilter status 'active' agar Admin bisa memantau produk draft/nonaktif.
+ */
+export const getAllProductsForAdmin = async (filters = { standard: {} }) => {
+    const whereClause = {};
+
+    // Filter Standar (Sama dengan getAllProducts)
+    if (filters.standard.sub_category_id) {
+        whereClause.sub_category_id = filters.standard.sub_category_id;
+    }
+    if (filters.standard.name) {
+        whereClause.name = { [Op.iLike]: `%${filters.standard.name}%` };
+    }
+
+    const products = await db.Product.findAll({
+        where: whereClause,
+        include: [
+            {
+                model: db.ProductMedia,
+                as: 'media',
+                attributes: ['id', 'media_url', 'is_primary'],
+                required: false
+            },
+            {
+                model: db.Store,
+                as: 'store',
+                attributes: ['id', 'name', 'status'] // Menampilkan info toko asal
+            }
+        ],
+        order: [['created_at', 'DESC']]
+    });
+
+    return products;
+};
+
 const ProductService = {
     createProduct,
     updateProduct,
@@ -233,7 +269,8 @@ const ProductService = {
     getAllProducts,
     getProductDetails,
     getProductsByStore,
-    bulkCreateProducts
+    bulkCreateProducts,
+    getAllProductsForAdmin
 };
 
 export default ProductService;

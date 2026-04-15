@@ -2,7 +2,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { successResponse } from '../utils/apiResponse.js';
 
 // ⚡ PERBAIKAN IMPORT: Konsistensi penamaan kapitalisasi
-import * as OrderService from '../services/orderService.js';
+import OrderService from '../services/orderService.js';
 import ShippingService from '../services/shippingService.js';
 
 export const calculateShipping = asyncHandler(async (req, res) => {
@@ -81,7 +81,20 @@ export const complete = asyncHandler(async (req, res) => {
     const buyerId = req.user.id; // Diambil dari token
     const orderId = req.params.id;
 
-    const result = await orderService.completeOrder(orderId, buyerId);
+    const result = await OrderService.completeOrder(orderId, buyerId);
     return successResponse(res, 200, 'Pesanan diselesaikan. Dana Escrow telah dirilis ke dompet Seller.', result);
 });
 
+// ⚡ BARU: Endpoint untuk Admin melihat seluruh transaksi di platform
+export const getAllOrders = asyncHandler(async (req, res) => {
+    const statusFilter = req.query.status;
+
+    const result = await OrderService.getAllOrdersForAdmin(statusFilter);
+    
+    return successResponse(
+        res, 
+        200, 
+        'Berhasil memuat seluruh daftar pesanan (Admin Access).', 
+        result
+    );
+});

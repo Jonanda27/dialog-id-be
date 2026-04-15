@@ -1,5 +1,5 @@
 import express from 'express';
-import { checkout, ship, complete, calculateShipping, getStoreOrders } from '../controllers/orderController.js';
+import { checkout, ship, complete, calculateShipping, getStoreOrders, getAllOrders } from '../controllers/orderController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { checkoutSchema } from '../validations/orderValidation.js';
@@ -95,7 +95,32 @@ router.post(
  *       404:
  *         description: Pesanan tidak ditemukan
  */
-router.patch('/:id/ship', authenticate, authorize('seller'), ship);
+router.patch('/:id/ship', authenticate, authorize('seller'),isStoreApproved, ship);
+
+/**
+ * @swagger
+ * /api/orders/admin/all:
+ * get:
+ * summary: Mengambil semua pesanan di platform (Admin Only)
+ * tags: [Orders]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: query
+ * name: status
+ * schema:
+ * type: string
+ * description: Filter berdasarkan status pesanan
+ * responses:
+ * 200:
+ * description: Berhasil mengambil semua data pesanan
+ */
+router.get(
+    '/admin/all', 
+    authenticate, 
+    authorize('admin'), 
+    getAllOrders
+);
 
 /**
  * @swagger

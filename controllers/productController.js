@@ -145,3 +145,26 @@ export const bulkCreateProducts = asyncHandler(async (req, res) => {
     const result = await ProductService.bulkCreateProducts(preparedData);
     return successResponse(res, 201, `${result.length} Produk berhasil diimport`, result);
 });
+
+/**
+ * Mengambil seluruh katalog produk lintas toko (Admin Only)
+ */
+export const getAllProductsAdmin = asyncHandler(async (req, res) => {
+    const standardKeys = ['sub_category_id', 'name', 'page', 'limit'];
+    const filters = { standard: {} };
+
+    for (const key in req.query) {
+        if (standardKeys.includes(key)) {
+            filters.standard[key] = req.query[key];
+        }
+    }
+
+    const result = await ProductService.getAllProductsForAdmin(filters);
+    
+    return successResponse(
+        res, 
+        200, 
+        'Berhasil mengambil seluruh katalog produk platform', 
+        result
+    );
+});

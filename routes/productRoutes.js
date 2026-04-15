@@ -1,5 +1,5 @@
 import express from 'express';
-import { createProduct, getProducts, getDetail, getMyProducts, bulkCreateProducts, updateProduct, deleteProduct } from '../controllers/productController.js';
+import { createProduct, getProducts, getDetail, getMyProducts, bulkCreateProducts, updateProduct, deleteProduct, getAllProductsAdmin } from '../controllers/productController.js';
 import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
 import { uploadProductPhotos } from '../middlewares/upload.js';
 import { validateRequest } from '../validations/authValidation.js';
@@ -129,6 +129,21 @@ router.put('/:id',
     updateProduct
 );
 
+/**
+ * @swagger
+ * /api/products/admin/all:
+ * get:
+ * summary: Mendapatkan semua produk lintas toko (Admin Only)
+ * tags: [Admin, Products]
+ * security:
+ * - bearerAuth: []
+ */
+router.get(
+    '/admin/all', 
+    authenticate, 
+    authorize('admin'), 
+    getAllProductsAdmin
+);
 
 // Route GET: Ambil Semua Produk (INI YANG TADI ILANG)
 router.get('/', getProducts);

@@ -57,6 +57,7 @@ export default class Product extends Model {
         // Relasi Existing
         this.belongsTo(models.Store, { foreignKey: 'store_id', as: 'store' });
         this.hasMany(models.ProductMedia, { foreignKey: 'product_id', as: 'media' });
+        this.hasMany(models.Review, { foreignKey: 'product_id', as: 'reviews' });
 
         // --- RELASI BARU ---
         // Produk ini bernaung di bawah satu Sub-Kategori spesifik

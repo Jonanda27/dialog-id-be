@@ -31,7 +31,7 @@ class OrderService {
                     lock: t.LOCK.UPDATE
                 });
 
-                if (!product || !product.is_active) {
+                if (!product) {
                     throw { statusCode: 404, message: `Produk dengan ID ${item.product_id} tidak ditemukan atau tidak aktif.` };
                 }
 
@@ -350,6 +350,39 @@ class OrderService {
             throw err;
         }
     }
+
+    static async getAllOrdersForAdmin(statusFilter) {
+    const whereClause = {};
+    if (statusFilter) whereClause.status = statusFilter;
+
+    return await db.Order.findAll({
+        where: whereClause,
+        include: [
+            {
+                model: db.User,
+                as: 'buyer',
+                attributes: ['id', 'full_name', 'email']
+            },
+            {
+                model: db.Store,
+                as: 'store',
+                attributes: ['id', 'name']
+            },
+            {
+                model: db.OrderItem,
+                as: 'items',
+                include: [
+                    {
+                        model: db.Product,
+                        as: 'product',
+                        attributes: ['id', 'name', 'price']
+                    }
+                ]
+            }
+        ],
+        order: [['created_at', 'DESC']]
+    });
+}
 }
 
 export default OrderService;
