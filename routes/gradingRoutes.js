@@ -2,7 +2,7 @@ import express from 'express';
 import { request, getStoreRequests, fulfill, streamMedia } from '../controllers/gradingController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { isStoreApproved } from '../middlewares/store.js';
-import upload from '../middlewares/upload.js';
+import { uploadVideo } from '../middlewares/upload.js';
 
 const router = express.Router();
 
@@ -99,7 +99,7 @@ router.get('/store-requests', authenticate, authorize('seller'), isStoreApproved
  *       404:
  *         description: Tiket grading tidak ditemukan (Not Found)
  */
-router.patch('/:id/fulfill', authenticate, authorize('seller'), isStoreApproved, upload.single('video'), fulfill);
+router.patch('/:id/fulfill', authenticate, authorize('seller'), isStoreApproved, uploadVideo.single('video'), fulfill);
 
 /**
  * @swagger

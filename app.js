@@ -17,9 +17,11 @@ import adminRoutes from './routes/adminRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
-import categoryRoutes from './routes/categoryRoutes.js'; // <-- BARU: Import Category Routes
-import addressRoutes from './routes/addressRoutes.js';   // <--- PASTIKAN ADA
-import shippingRoutes from './routes/shippingRoutes.js'; // <--- PASTIKAN ADA
+import categoryRoutes from './routes/categoryRoutes.js'; 
+import addressRoutes from './routes/addressRoutes.js';   
+import shippingRoutes from './routes/shippingRoutes.js'; 
+import gradingRoutes from './routes/gradingRoutes.js';
+import disputeRoutes from './routes/disputeRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -98,16 +100,17 @@ app.get('/health', (req, res) => {
   return successResponse(res, 200, 'Analog.id API is up and running!');
 });
 
-// Mount Feature Routes (Duplikasi telah dibersihkan)
 app.use('/api/auth', authRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/categories', categoryRoutes); // <-- BARU: Mount Category Routes
-app.use('/api/v1/addresses', addressRoutes);   // <--- PASANG INI
+app.use('/api/categories', categoryRoutes); 
+app.use('/api/v1/addresses', addressRoutes);   
 app.use('/api/v1/shipping', shippingRoutes);
+app.use('/api/grading', gradingRoutes); 
+app.use('/api/disputes', disputeRoutes);
 
 
 // ==========================================
