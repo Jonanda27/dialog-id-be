@@ -1,11 +1,11 @@
 import express from 'express';
 import { createAddress, getAddresses, updateAddress, deleteAddress } from '../controllers/addressController.js';
-import { requireAuth } from '../middlewares/auth.js';
+import { authenticate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
 // Semua endpoint alamat mewajibkan pengguna untuk terotentikasi
-router.use(requireAuth);
+router.use(authenticate);
 
 /**
  * @swagger

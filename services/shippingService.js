@@ -57,3 +57,39 @@ export const calculateRates = async (originAreaId, destinationAreaId, items) => 
         );
     }
 };
+
+// File: services/shippingService.js
+
+// File: services/shippingService.js
+
+export const searchAreas = async (input) => {
+    try {
+        const response = await biteshipClient.get('/v1/maps/areas', {
+            params: {
+                countries: 'ID', // Batasi pencarian hanya untuk wilayah Indonesia
+                input: input,
+                type: 'single'   // Parameter wajib untuk Sandbox Biteship
+            }
+        });
+
+        const rawAreas = response.data.areas || [];
+
+        // Mapping raw payload Biteship menjadi standar DTO (Data Transfer Object)
+        // yang disepakati oleh interface BiteshipArea di Frontend.
+        const mappedAreas = rawAreas.map(area => ({
+            biteship_area_id: area.id,
+            formatted_name: area.name,
+            province: area.administrative_division_level_1_name,
+            city: area.administrative_division_level_2_name,
+            district: area.administrative_division_level_3_name,
+            postal_code: area.postal_code
+        }));
+
+        return mappedAreas;
+    } catch (error) {
+        console.error('[Biteship Search Areas Error]:', error.response?.data || error.message);
+
+        // Melempar error agar dapat ditangkap oleh asyncHandler di controller
+        throw new Error(error.response?.data?.error || 'Gagal mencari data area pengiriman.');
+    }
+};

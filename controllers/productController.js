@@ -179,7 +179,7 @@ export const syncProducts = asyncHandler(async (req, res) => {
     // Ambil hanya kolom krusial untuk sinkronisasi finansial & logistik Biteship
     const latestProducts = await Product.findAll({
         where: { id: product_ids },
-        attributes: ['id', 'price', 'stock', 'product_weight', 'is_active'],
+        attributes: ['id', 'price', 'stock', 'product_weight', 'metadata', 'store_id'],
     });
 
     return successResponse(

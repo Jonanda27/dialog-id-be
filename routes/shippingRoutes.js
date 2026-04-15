@@ -1,6 +1,6 @@
 import express from 'express';
 import { getAreas, getShippingRates } from '../controllers/shippingController.js';
-import { requireAuth } from '../middlewares/auth.js';
+import { authenticate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
@@ -61,7 +61,7 @@ const router = express.Router();
  *       404:
  *         description: Alamat atau Toko tidak ditemukan (Not Found)
  */
-router.post('/rates', requireAuth, getShippingRates);
+router.post('/rates', authenticate, getShippingRates);
 
 /**
  * @swagger
