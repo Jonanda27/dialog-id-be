@@ -23,11 +23,11 @@ class GradingService {
             throw error;
         }
 
-        // GANTI STATUS SAAT CREATE:
+        // Transisi State Inisialisasi: Sesuai Blueprint Bisnis
         return await db.GradingRequest.create({
             buyer_id: buyerId,
             product_id: productId,
-            status: 'AWAITING_SELLER_MEDIA' // <--- Sesuaikan dengan ENUM baru di migrasi lo
+            status: 'AWAITING_SELLER_MEDIA'
         });
     }
 
@@ -41,14 +41,13 @@ class GradingService {
                 {
                     model: db.Product,
                     as: 'product',
-                    // Filter level Join: Hanya ambil request yang produknya milik toko ini
                     where: { store_id: storeId },
                     attributes: ['id', 'name', 'price', 'metadata'],
                     include: [
                         {
                             model: db.ProductMedia,
                             as: 'media',
-                            where: { is_primary: true }, // Hanya ambil thumbnail
+                            where: { is_primary: true },
                             required: false,
                             attributes: ['media_url']
                         }
@@ -56,8 +55,9 @@ class GradingService {
                 },
                 {
                     model: db.User,
-                    as: 'buyer', // Pastikan relasi di model GradingRequest memakai alias 'buyer'
-                    attributes: ['id', 'name']
+                    as: 'buyer',
+                    // ⚡ FIX: Sesuaikan nama kolom dengan DB (full_name), lalu beri alias 'name' untuk Frontend
+                    attributes: ['id', ['full_name', 'name']]
                 }
             ],
             order: [['created_at', 'DESC']]
@@ -92,14 +92,23 @@ class GradingService {
             throw error;
         }
 
-        request.status = 'fulfilled';
-        // Konsistensi Path: Hilangkan '/public' seperti di Fase B
+        // --- PERBAIKAN KRITIS STATE MACHINE ---
+        // Mengubah status legacy 'fulfilled' menjadi 'MEDIA_READY'
+        // Ini memastikan controller pembeli dapat mendeteksi tiket yang sudah di-fulfill
+        // dan timer SLA (Service Level Agreement) checkout 3x24 jam bisa berjalan secara logis.
+        request.status = 'MEDIA_READY';
+
+        // Konsistensi Path: Menyimpan path relatif agar streaming proxy (di gradingController.js) 
+        // dapat melakukan resolusi path dengan dinamis dan aman.
         request.video_url = `/uploads/videos/${file.filename}`;
 
         await request.save();
         return request;
     }
 
+    /**
+     * Buyer melihat daftar pengajuan grading miliknya
+     */
     static async getBuyerGradingRequests(buyerId) {
         return await db.GradingRequest.findAll({
             where: { buyer_id: buyerId },

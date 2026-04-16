@@ -106,6 +106,7 @@ export const getStoreOrders = asyncHandler(async (req, res) => {
     const statusFilter = req.query.status;
     const result = await OrderService.getStoreOrders(storeId, statusFilter);
     return successResponse(res, 200, 'Berhasil memuat daftar pesanan masuk.', result);
+    return successResponse(res, 200, 'Berhasil memuat daftar pesanan masuk.', result);
 });
 
 export const ship = asyncHandler(async (req, res) => {

@@ -100,6 +100,7 @@ class OrderService {
                 store_id: store.id,
                 subtotal,
                 shipping_fee: actualShippingFee,
+                shipping_fee: actualShippingFee,
                 grading_fee: totalGradingFee,
                 grand_total: grandTotal,
                 status: 'pending_payment',
@@ -185,10 +186,64 @@ class OrderService {
     }
 
     /**
+     * ⚡ BARU: Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)
+     */
+    static async getOrderById(orderId, userId) {
+        const order = await db.Order.findByPk(orderId, {
+            include: [
+                { model: db.User, as: 'buyer', attributes: ['id', 'full_name', 'email'] },
+                { model: db.Store, as: 'store' },
+                {
+                    model: db.OrderItem,
+                    as: 'items',
+                    include: [
+                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
+                    ]
+                }
+            ]
+        });
+
+        if (!order) {
+            throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
+        }
+
+        // Otorisasi: Hanya pembeli atau pemilik toko yang boleh melihat detail ini
+        if (order.buyer_id !== userId && order.store_id !== userId) {
+            throw { statusCode: 403, message: 'Akses ditolak.' };
+        }
+
+        return order;
+    }
+
+    /**
+     * ⚡ BARU: Mengambil riwayat pesanan milik pembeli (Buyer)
+     */
+    static async getBuyerOrders(buyerId, statusFilter) {
+        const whereClause = { buyer_id: buyerId };
+        if (statusFilter) whereClause.status = statusFilter;
+
+        return await db.Order.findAll({
+            where: whereClause,
+            include: [
+                { model: db.Store, as: 'store' },
+                {
+                    model: db.OrderItem,
+                    as: 'items',
+                    include: [
+                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
+                    ]
+                }
+            ],
+            order: [['created_at', 'DESC']]
+        });
+    }
+
+    /**
      * Mengambil daftar pesanan yang masuk ke toko.
      */
     static async getStoreOrders(storeId, statusFilter) {
         const whereClause = { store_id: storeId };
+        if (statusFilter) whereClause.status = statusFilter;
         if (statusFilter) whereClause.status = statusFilter;
 
         return await db.Order.findAll({
@@ -197,10 +252,12 @@ class OrderService {
                 {
                     model: db.User,
                     as: 'buyer',
+                    as: 'buyer',
                     attributes: ['id', 'full_name', 'email']
                 },
                 {
                     model: db.OrderItem,
+                    as: 'items',
                     as: 'items',
                     include: [
                         {
@@ -242,7 +299,6 @@ class OrderService {
 
     /**
      * Menyelesaikan pesanan, merilis dana Escrow, dan mengupdate saldo dompet toko.
-     * Menggunakan Transaksi ACID.
      */
     static async completeOrder(orderId, buyerId) {
         const t = await db.sequelize.transaction();
@@ -294,7 +350,6 @@ class OrderService {
             store.balance = Number(store.balance) + netToSeller;
             await store.save({ transaction: t });
 
-            // Commit semua perubahan permanen
             await t.commit();
             return order;
 

@@ -4,39 +4,39 @@ import db from '../models/index.js';
 import { errorResponse } from '../utils/apiResponse.js';
 
 /**
- * Middleware untuk memverifikasi JWT Token dari header Authorization
+ * Middleware untuk memverifikasi JWT Token dari header Authorization atau Query Params
  */
+// File: dialog-id-be/middlewares/auth.js
 export const authenticate = async (req, res, next) => {
     try {
         let token;
 
-        // 1. Ekstrak token secara aman
+        // Cek header dahulu
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
         }
-
-        if (!token) {
-            return errorResponse(res, 401, 'Akses ditolak. Token otorisasi tidak ditemukan.');
+        // Cek query parameter (Fallback untuk tag <video>)
+        else if (req.query.token) {
+            token = req.query.token;
         }
 
-        // 2. Verifikasi JWT
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (!token) {
+            return errorResponse(res, 401, 'Akses ditolak. Token tidak ditemukan.');
+        }
 
-        // 3. Validasi eksistensi user (Mencegah phantom session jika user dihapus/diblokir)
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const currentUser = await db.User.findByPk(decoded.id, {
-            attributes: ['id', 'email', 'role'] // Hanya ambil field esensial
+            attributes: ['id', 'email', 'role']
         });
 
         if (!currentUser) {
-            return errorResponse(res, 401, 'Sesi tidak valid. Pengguna tidak ditemukan.');
+            return errorResponse(res, 401, 'Sesi tidak valid.');
         }
 
-        // 4. Inject data user ke objek request
         req.user = currentUser;
         next();
     } catch (error) {
-        // Biarkan Global Error Handler menangani spesifikasi error JWT
-        next(error);
+        return errorResponse(res, 401, 'Token kedaluwarsa atau tidak valid.');
     }
 };
 
