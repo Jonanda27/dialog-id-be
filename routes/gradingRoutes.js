@@ -1,5 +1,5 @@
 import express from 'express';
-import { request, getStoreRequests, fulfill, streamMedia } from '../controllers/gradingController.js';
+import { request, getStoreRequests, fulfill, streamMedia, getBuyerRequests } from '../controllers/gradingController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { isStoreApproved } from '../middlewares/store.js';
 import { uploadVideo } from '../middlewares/upload.js';
@@ -129,5 +129,19 @@ router.patch('/:id/fulfill', authenticate, authorize('seller'), isStoreApproved,
  *         description: Video atau tiket tidak ditemukan (Not Found)
  */
 router.get('/:id/stream', authenticate, streamMedia);
+
+/**
+ * @swagger
+ * /api/grading/my-requests:
+ *   get:
+ *     summary: Mendapatkan daftar permintaan grading milik Buyer (Untuk Dashboard Buyer)
+ *     tags: [Grading & Dispute]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Berhasil memuat daftar request (OK)
+ */
+router.get('/my-requests', authenticate, authorize('buyer'), getBuyerRequests);
 
 export default router;

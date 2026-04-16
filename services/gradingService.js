@@ -23,10 +23,11 @@ class GradingService {
             throw error;
         }
 
+        // GANTI STATUS SAAT CREATE:
         return await db.GradingRequest.create({
             buyer_id: buyerId,
             product_id: productId,
-            status: 'requested'
+            status: 'AWAITING_SELLER_MEDIA' // <--- Sesuaikan dengan ENUM baru di migrasi lo
         });
     }
 
@@ -42,7 +43,7 @@ class GradingService {
                     as: 'product',
                     // Filter level Join: Hanya ambil request yang produknya milik toko ini
                     where: { store_id: storeId },
-                    attributes: ['id', 'name', 'price', 'format'],
+                    attributes: ['id', 'name', 'price', 'metadata'],
                     include: [
                         {
                             model: db.ProductMedia,
@@ -97,6 +98,29 @@ class GradingService {
 
         await request.save();
         return request;
+    }
+
+    static async getBuyerGradingRequests(buyerId) {
+        return await db.GradingRequest.findAll({
+            where: { buyer_id: buyerId },
+            include: [
+                {
+                    model: db.Product,
+                    as: 'product',
+                    attributes: ['id', 'name', 'price', 'metadata'],
+                    include: [
+                        {
+                            model: db.ProductMedia,
+                            as: 'media',
+                            where: { is_primary: true },
+                            required: false,
+                            attributes: ['media_url']
+                        }
+                    ]
+                }
+            ],
+            order: [['created_at', 'DESC']]
+        });
     }
 }
 

@@ -117,3 +117,11 @@ export const streamMedia = asyncHandler(async (req, res) => {
         fs.createReadStream(filePath).pipe(res);
     }
 });
+
+// Pastikan memanggil service yang baru dibuat
+export const getBuyerRequests = asyncHandler(async (req, res) => {
+    const buyerId = req.user.id; // Dari token JWT
+    const result = await GradingService.getBuyerGradingRequests(buyerId);
+
+    return successResponse(res, 200, 'Berhasil memuat permintaan grading Anda.', result);
+});
