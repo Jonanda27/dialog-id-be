@@ -41,14 +41,13 @@ class GradingService {
                 {
                     model: db.Product,
                     as: 'product',
-                    // Filter level Join: Hanya ambil request yang produknya milik toko ini
                     where: { store_id: storeId },
                     attributes: ['id', 'name', 'price', 'metadata'],
                     include: [
                         {
                             model: db.ProductMedia,
                             as: 'media',
-                            where: { is_primary: true }, // Hanya ambil thumbnail
+                            where: { is_primary: true },
                             required: false,
                             attributes: ['media_url']
                         }
@@ -56,8 +55,9 @@ class GradingService {
                 },
                 {
                     model: db.User,
-                    as: 'buyer', // Pastikan relasi di model GradingRequest memakai alias 'buyer'
-                    attributes: ['id', 'name']
+                    as: 'buyer',
+                    // ⚡ FIX: Sesuaikan nama kolom dengan DB (full_name), lalu beri alias 'name' untuk Frontend
+                    attributes: ['id', ['full_name', 'name']]
                 }
             ],
             order: [['created_at', 'DESC']]
