@@ -14,6 +14,9 @@ import Escrow from './Escrow.js';
 import WalletTransaction from './WalletTransaction.js';
 import GradingRequest from './GradingRequest.js';
 import AddressInit from './Address.js';
+import Review from './Review.js';
+import ReviewMedia from './ReviewMedia.js';
+import Billing from './Billing.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -34,28 +37,36 @@ const models = {
   SubCategory: SubCategory.init(sequelize),
   Product: Product.init(sequelize),
   ProductMedia: ProductMedia.init(sequelize),
+  Billing: Billing.init(sequelize),
   Order: Order.init(sequelize),
   OrderItem: OrderItem.init(sequelize),
   Escrow: Escrow.init(sequelize),
   WalletTransaction: WalletTransaction.init(sequelize),
   GradingRequest: GradingRequest.init(sequelize),
   Address: AddressInit(sequelize),
+  Review: Review.init(sequelize),
+  ReviewMedia: ReviewMedia.init(sequelize),
 };
 
-// Tambahkan baris ini sebelum Object.values
+
+
+// ⚡ PERBAIKAN: Gabungkan instance sequelize ke dalam object db 
+// agar bisa dipanggil sebagai db.sequelize di Service
 const db = {
   ...models,
-  sequelize, // Masukkan instance koneksi ke sini
-  Sequelize
+  sequelize,
+  Sequelize,
 };
 
-// Eksekusi fungsi associate() menggunakan objek db yang baru
-Object.values(db).forEach((model) => {
+// Eksekusi fungsi associate() jika ada di dalam model
+// Di sinilah relasi Category -> SubCategory -> Product dirangkai
+Object.values(models).forEach((model) => {
   if (typeof model.associate === 'function') {
     model.associate(db);
   }
 });
 
 
+// Export secara named untuk kebutuhan spesifik
 export { sequelize, Sequelize };
 export default db;

@@ -36,64 +36,76 @@ export const createProduct = async (storeId, productData, files) => {
         // 1. Buat record Produk Utama
         const product = await db.Product.create({
             store_id: storeId,
-            ...productData // name, artist, price, stock, dll
+            ...productData 
         }, { transaction: t });
 
-        // 2. Jika ada file yang diunggah, simpan ke tabel ProductMedia
-        if (files && files.length > 0) {
+        // 2. Periksa apakah files ada (Multer .array() mengirim array)
+        if (files && Array.isArray(files) && files.length > 0) {
             const mediaRecords = files.map((file, index) => ({
                 product_id: product.id,
-                media_url: `/public/uploads/products/${file.filename}`,
-                is_primary: index === 0
+                // Hilangkan '/public' jika folder uploads Anda sudah di-set statis
+                media_url: `/uploads/products/${file.filename}`, 
+                is_primary: index === 0 // File pertama jadi foto utama
             }));
 
-            // Bulk insert ke ProductMedia
             await db.ProductMedia.bulkCreate(mediaRecords, { transaction: t });
         }
 
-        // 3. Commit transaksi jika semua proses di atas berhasil
         await t.commit();
 
-        // 4. Return produk beserta fotonya (memanggil fungsi detail)
+        // 3. Pastikan getProductDetails melakukan include: [ { model: ProductMedia, as: 'media' } ]
         return await getProductDetails(product.id);
     } catch (error) {
-        // 5. Rollback jika terjadi error apa pun
         if (t) await t.rollback();
         throw error;
     }
 };
 
 export const updateProduct = async (productId, storeId, updateData, files) => {
-    const product = await db.Product.findOne({
-        where: { id: productId, store_id: storeId }
-    });
+    // Gunakan transaksi untuk keamanan data
+    const t = await sequelize.transaction();
 
-    if (!product) {
-        const error = new Error('Produk tidak ditemukan atau Anda tidak memiliki akses');
-        error.statusCode = 404;
+    try {
+        const product = await db.Product.findOne({
+            where: { id: productId, store_id: storeId }
+        });
+
+        if (!product) {
+            const error = new Error('Produk tidak ditemukan atau Anda tidak memiliki akses');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // 1. Update data teks/metadata
+        await product.update(updateData, { transaction: t });
+
+        // 2. Jika ada file foto baru yang diunggah
+        if (files && files.length > 0) {
+            // Hapus record media lama di database
+            await db.ProductMedia.destroy({ 
+                where: { product_id: product.id },
+                transaction: t 
+            });
+
+            // Buat record media baru
+            const mediaRecords = files.map((file, index) => ({
+                product_id: product.id,
+                // Pastikan path konsisten dengan /public/uploads
+                media_url: `/uploads/products/${file.filename}`,
+                is_primary: index === 0 
+            }));
+
+            await db.ProductMedia.bulkCreate(mediaRecords, { transaction: t });
+        }
+
+        await t.commit();
+        
+        // 3. Kembalikan detail terbaru (pastikan fungsi ini melakukan include ProductMedia)
+        return await getProductDetails(productId);
+    } catch (error) {
+        if (t) await t.rollback();
         throw error;
     }
-
-    // 1. Update data teks
-    await product.update(updateData);
-
-    // 2. Jika ada file foto yang diunggah, masukkan ke database ProductMedia
-    if (files && files.length > 0) {
-        // Hapus foto lama agar tidak menumpuk di DB
-        await db.ProductMedia.destroy({ where: { product_id: product.id } });
-
-        // Buat record media baru
-        const mediaRecords = files.map((file, index) => ({
-            product_id: product.id,
-            media_url: `/public/uploads/products/${file.filename}`,
-            is_primary: index === 0 
-        }));
-
-        await db.ProductMedia.bulkCreate(mediaRecords);
-    }
-
-    // 3. Kembalikan detail terbaru
-    return await getProductDetails(productId);
 };
 
 export const deleteProduct = async (productId, storeId) => {
@@ -214,6 +226,42 @@ export const bulkCreateProducts = async (products) => {
     }
 };
 
+/**
+ * Mendapatkan semua produk dari seluruh toko untuk kebutuhan Admin.
+ * Tidak memfilter status 'active' agar Admin bisa memantau produk draft/nonaktif.
+ */
+export const getAllProductsForAdmin = async (filters = { standard: {} }) => {
+    const whereClause = {};
+
+    // Filter Standar (Sama dengan getAllProducts)
+    if (filters.standard.sub_category_id) {
+        whereClause.sub_category_id = filters.standard.sub_category_id;
+    }
+    if (filters.standard.name) {
+        whereClause.name = { [Op.iLike]: `%${filters.standard.name}%` };
+    }
+
+    const products = await db.Product.findAll({
+        where: whereClause,
+        include: [
+            {
+                model: db.ProductMedia,
+                as: 'media',
+                attributes: ['id', 'media_url', 'is_primary'],
+                required: false
+            },
+            {
+                model: db.Store,
+                as: 'store',
+                attributes: ['id', 'name', 'status'] // Menampilkan info toko asal
+            }
+        ],
+        order: [['created_at', 'DESC']]
+    });
+
+    return products;
+};
+
 const ProductService = {
     createProduct,
     updateProduct,
@@ -221,7 +269,8 @@ const ProductService = {
     getAllProducts,
     getProductDetails,
     getProductsByStore,
-    bulkCreateProducts
+    bulkCreateProducts,
+    getAllProductsForAdmin
 };
 
 export default ProductService;

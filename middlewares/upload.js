@@ -2,7 +2,6 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-
 // Tentukan direktori penyimpanan
 const uploadDir = 'public/uploads/kyc';
 
@@ -122,7 +121,7 @@ const videoStorage = multer.diskStorage({
     }
 });
 
-// File Filter untuk Video (MP4, WebM, AVI)
+// File Filter untuk Video (MP4, WebM, AVI, MOV, MKV)
 const videoFileFilter = (req, file, cb) => {
     const allowedTypes = /mp4|webm|avi|mov|mkv/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -140,4 +139,30 @@ export const uploadVideo = multer({
     storage: videoStorage,
     limits: { fileSize: 100 * 1024 * 1024 }, // Maksimal 100MB untuk video
     fileFilter: videoFileFilter
+});
+
+// ==========================================
+// KONFIGURASI UPLOAD FOTO ULASAN (REVIEW)
+// ==========================================
+const reviewDir = 'public/uploads/reviews';
+
+if (!fs.existsSync(reviewDir)) {
+    fs.mkdirSync(reviewDir, { recursive: true });
+}
+
+const reviewStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, reviewDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, 'review-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+// Middleware multer untuk foto ulasan (Maksimal 3 foto, 5MB per foto)
+export const uploadReviewPhotos = multer({
+    storage: reviewStorage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: fileFilter
 });

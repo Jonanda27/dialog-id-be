@@ -7,7 +7,8 @@ import {
     bulkCreateProducts,
     updateProduct,
     deleteProduct,
-    syncProducts
+    syncProducts,
+    getAllProductsAdmin
 } from '../controllers/productController.js';
 import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
 import { uploadProductPhotos } from '../middlewares/upload.js';
@@ -119,6 +120,35 @@ router.get(
     getMyProducts
 );
 
+
+
+// Route untuk menghapus produk
+router.delete('/:id', deleteProduct); 
+
+//Route untuk seller melakukan bulk-upload
+router.post('/bulk', authenticate, authorize('seller'), isStoreApproved, bulkCreateProducts);
+
+/**
+ * @swagger
+ * /api/products/{id}:
+ *   get:
+ *     summary: Mendapatkan detail produk beserta semua fotonya
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Detail produk ditemukan
+ *       404:
+ *         description: Produk tidak ditemukan
+ */
+router.get('/:id', getDetail);
+
 /**
  * @swagger
  * /api/products/bulk:
@@ -183,6 +213,22 @@ router.post(
  *         description: Beberapa produk tidak ditemukan (Not Found)
  */
 router.post('/sync', syncProducts);
+
+/**
+ * @swagger
+ * /api/products/admin/all:
+ * get:
+ * summary: Mendapatkan semua produk lintas toko (Admin Only)
+ * tags: [Admin, Products]
+ * security:
+ * - bearerAuth: []
+ */
+router.get(
+    '/admin/all', 
+    authenticate, 
+    authorize('admin'), 
+    getAllProductsAdmin
+);
 
 /**
  * @swagger

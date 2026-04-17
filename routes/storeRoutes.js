@@ -5,7 +5,9 @@ import {
     getWallet,
     getMyStore,
     updateStore,
-    getAllStores
+    getAllStores,
+    getStoreById,
+    createBankAccount
 } from '../controllers/storeController.js';
 import { validateRequest } from '../validations/authValidation.js';
 import { registerStoreSchema } from '../validations/storeValidation.js';
@@ -49,14 +51,6 @@ router.put('/update',
 );
 
 /**
- * @desc    Get All Stores (Eksplorasi Toko)
- * @route   GET /api/stores
- * @access  Public
- * @note    Diletakkan di paling atas agar tidak bentrok dengan route spesifik
- */
-router.get('/', getAllStores);
-
-/**
  * Route: GET /api/stores/wallet
  * Deskripsi: Mengambil saldo dan riwayat transaksi toko
  * Proteksi: 
@@ -71,5 +65,29 @@ router.get(
     isStoreApproved, // Middleware ini krusial untuk menginjeksi data store ke request
     getWallet
 );
+
+/**
+ * Route: POST /api/stores/bank-account
+ * Deskripsi: Menambahkan rekening bank pencairan dana untuk pertama kalinya
+ */
+router.post(
+    '/bank-account',
+    authenticate,
+    authorize('seller'),
+    isStoreApproved, // Rekening hanya bisa diatur jika toko sudah disetujui (opsional, sesuaikan bisnis logikamu)
+    createBankAccount
+);
+
+/**
+ * @desc    Get All Stores (Eksplorasi Toko)
+ * @route   GET /api/stores
+ * @access  Public
+ * @note    Diletakkan di paling atas agar tidak bentrok dengan route spesifik
+ */
+router.get('/', getAllStores);
+
+router.get('/:id', getStoreById);
+
+
 
 export default router;

@@ -23,5 +23,6 @@ export default class OrderItem extends Model {
     static associate(models) {
         this.belongsTo(models.Order, { foreignKey: 'order_id', as: 'order' });
         this.belongsTo(models.Product, { foreignKey: 'product_id', as: 'product' });
+        this.hasOne(models.Review, { foreignKey: 'order_item_id', as: 'review' });
     }
 }
