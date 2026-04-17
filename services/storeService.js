@@ -1,6 +1,7 @@
 // File: dialog-id-be/services/storeService.js
 import db from "../models/index.js";
 import Store from "../models/Store.js";
+import { Op } from 'sequelize';
 
 class StoreService {
   /**
@@ -139,7 +140,7 @@ class StoreService {
  */
 static async findAllStores(filters) {
     const { status, search } = filters;
-    const { Op } = db.Sequelize;
+    
 
     const whereClause = {};
     
@@ -179,6 +180,52 @@ static async findAllStores(filters) {
         order: [['createdAt', 'DESC']]
     });
 }
+static async findById(id) {
+    return await db.Store.findByPk(id, {
+        attributes: [
+            'id', 'name', 'description', 'logo_url', 'banner_url', 
+            'status', 'working_days', 'working_hours', 'social_links',
+            'created_at' 
+        ],
+        include: [
+            {
+                model: db.User,
+                as: 'owner',
+                // Coba tulis atribut secara eksplisit dalam nested array jika name bermasalah
+                attributes: ['full_name'], 
+            }
+        ]
+    });
+}
+
+/**
+   * Menambahkan informasi rekening bank untuk pertama kali (Create)
+   */
+  static async createBankInfo(userId, bankData) {
+    const store = await this.getByUserId(userId);
+    
+    if (!store) {
+      const error = new Error("Toko tidak ditemukan.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Validasi: Pastikan bank belum pernah dibuat
+    // Jika bank_account_number sudah ada isinya, tolak operasi "Create"
+    if (store.bank_account_number) {
+      const error = new Error("Informasi rekening bank sudah terdaftar. Silakan gunakan fitur Update jika ingin mengubahnya.");
+      error.statusCode = 409; // 409 Conflict
+      throw error;
+    }
+
+    // Simpan data bank baru ke dalam tabel stores
+    return await store.update({
+      bank_name: bankData.bank_name,
+      bank_account_number: bankData.bank_account_number,
+      bank_account_name: bankData.bank_account_name,
+    });
+  }
+
 }
 
 

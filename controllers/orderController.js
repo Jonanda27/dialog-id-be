@@ -41,6 +41,8 @@ export const calculateShipping = asyncHandler(async (req, res) => {
 
 export const checkout = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
+
+    // Validasi payload (pastikan checkoutSchema sudah mendukung array orders)
     const validatedData = checkoutSchema.parse(req.body);
 
     // --- LOGIKA DOMAIN: INJEKSI BIAYA GRADING (SERVER-SIDE) ---
@@ -66,14 +68,18 @@ export const checkout = asyncHandler(async (req, res) => {
     validatedData.items = itemsWithGrading;
 
     try {
-        // OrderService sekarang menerima payload yang sudah divalidasi dengan grading_fee
-        const order = await OrderService.createOrder(buyerId, validatedData);
+        // Service sekarang mengembalikan objek Billing Master dengan injeksi grading fee
+        const checkoutResult = await OrderService.createOrder(buyerId, validatedData);
 
         return successResponse(
             res,
             201,
-            'Checkout berhasil. Biaya verifikasi otomatis terakumulasi jika tersedia.',
-            { order_id: order.id, grand_total: order.grand_total }
+            'Checkout berhasil. Biaya verifikasi otomatis terakumulasi jika tersedia. Silakan selesaikan pembayaran.',
+            {
+                billing_id: checkoutResult.billing_id,
+                grand_total: checkoutResult.grand_total,
+                order_count: checkoutResult.orders?.length || 1
+            }
         );
     } catch (error) {
         if (error.statusCode === 409) {
@@ -87,6 +93,8 @@ export const checkout = asyncHandler(async (req, res) => {
     }
 });
 
+
+// Endpoint untuk mengambil detail pesanan spesifik (Dibutuhkan Frontend di halaman Pembayaran)
 export const getOrderById = asyncHandler(async (req, res) => {
     const userId = req.user.id;
     const orderId = req.params.id;
@@ -113,6 +121,11 @@ export const ship = asyncHandler(async (req, res) => {
     const { tracking_number } = req.body;
     const storeId = req.store.id;
     const orderId = req.params.id;
+
+    if (!tracking_number) {
+        return res.status(400).json({ success: false, message: 'Resi pengiriman wajib diisi.' });
+    }
+
     const result = await OrderService.shipOrder(orderId, storeId, tracking_number);
     return successResponse(res, 200, 'Pesanan berhasil dikirim dan resi tersimpan.', result);
 });
@@ -122,4 +135,18 @@ export const complete = asyncHandler(async (req, res) => {
     const orderId = req.params.id;
     const result = await OrderService.completeOrder(orderId, buyerId);
     return successResponse(res, 200, 'Pesanan diselesaikan. Dana Escrow telah dirilis ke dompet Seller.', result);
+});
+
+// ⚡ BARU: Endpoint untuk Admin melihat seluruh transaksi di platform
+export const getAllOrders = asyncHandler(async (req, res) => {
+    const statusFilter = req.query.status;
+
+    const result = await OrderService.getAllOrdersForAdmin(statusFilter);
+
+    return successResponse(
+        res,
+        200,
+        'Berhasil memuat seluruh daftar pesanan (Admin Access).',
+        result
+    );
 });

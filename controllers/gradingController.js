@@ -1,9 +1,15 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { successResponse } from '../utils/apiResponse.js';
+import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import GradingService from '../services/gradingService.js';
 import db from '../models/index.js'; // Akses langsung ke model untuk verifikasi mandiri
+
+// ⚡ FIX: Membuat ulang variabel __dirname yang hilang di ES Modules
+// Ini menjamin path selalu dihitung dari folder 'controllers', tidak peduli dari mana server di-start.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const request = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
@@ -71,22 +77,33 @@ export const streamMedia = asyncHandler(async (req, res) => {
 
     // 2. Lapisan Otorisasi Bertingkat
     const isAuthorized =
-        (userId === ticket.buyer_id) || // Pembeli yang memesan tiket
-        (ticket.product && ticket.product.store && userId === ticket.product.store.user_id) || // Penjual pemilik barang
-        (userRole === 'admin'); // Super User (Admin)
+        (userId === ticket.buyer_id) ||
+        (ticket.product && ticket.product.store && userId === ticket.product.store.user_id) ||
+        (userRole === 'admin');
 
     if (!isAuthorized) {
         return res.status(403).json({ success: false, message: "Akses Ditolak. Video ini bersifat privat eksklusif untuk pembeli dan penjual terkait." });
     }
 
-    // 3. Resolusi Path File
-    // Tergantung bagaimana GradingService Anda menyimpan path videonya.
-    // Jika tidak menyimpan path absolut, sistem dapat menggunakan standar konvensi penamaan tiket.
-    const filePath = ticket.video_url || path.resolve(`storage/private_media/grading_${ticket.id}.mp4`);
+    // 3. ⚡ RESOLUSI PATH PASTI (DETERMINISTIC)
+    // Karena kita tidak memakai DB, sistem selalu mencari ke storage privat dengan ID tiket.
+    const targetDir = path.join(__dirname, '..', 'storage', 'private_media');
 
+    // Default tebakan ke .mp4
+    let filePath = path.join(targetDir, `grading_${ticket.id}.mp4`);
+
+    // Tambahan safety jika penjual mengupload file .mov
     if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ success: false, message: "File video fisik tidak ditemukan di server." });
+        const movPath = path.join(targetDir, `grading_${ticket.id}.mov`);
+        if (fs.existsSync(movPath)) {
+            filePath = movPath;
+        } else {
+            console.log(`[DEBUG FAIL] Video tidak ada di: ${filePath}`);
+            return res.status(404).json({ success: false, message: "File video fisik tidak ditemukan di server." });
+        }
     }
+
+    console.log(`[DEBUG STREAM SUCCESS] Memutar video dari: ${filePath}`);
 
     // 4. Proses Streaming Data (Mendukung Seek/Scrubbing di HTML5 Video Player)
     const stat = fs.statSync(filePath);
@@ -118,7 +135,6 @@ export const streamMedia = asyncHandler(async (req, res) => {
     }
 });
 
-// Pastikan memanggil service yang baru dibuat
 export const getBuyerRequests = asyncHandler(async (req, res) => {
     const buyerId = req.user.id; // Dari token JWT
     const result = await GradingService.getBuyerGradingRequests(buyerId);

@@ -3,19 +3,15 @@ import jwt from 'jsonwebtoken';
 import db from '../models/index.js';
 import { errorResponse } from '../utils/apiResponse.js';
 
-/**
- * Middleware untuk memverifikasi JWT Token dari header Authorization atau Query Params
- */
-// File: dialog-id-be/middlewares/auth.js
 export const authenticate = async (req, res, next) => {
     try {
         let token;
 
-        // Cek header dahulu
+        // 1. Ekstrak dari Header (Prioritas Utama)
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
         }
-        // Cek query parameter (Fallback untuk tag <video>)
+        // 2. Ekstrak dari Query Params (Mutlak untuk pemutaran tag <video> lintas domain)
         else if (req.query.token) {
             token = req.query.token;
         }
@@ -24,19 +20,32 @@ export const authenticate = async (req, res, next) => {
             return errorResponse(res, 401, 'Akses ditolak. Token tidak ditemukan.');
         }
 
+        // 3. Verifikasi Token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const currentUser = await db.User.findByPk(decoded.id, {
+
+        // ⚡ FIX LOGICAL: Tangkap ID pengguna baik dari claim 'sub' maupun 'id'
+        const userId = decoded.sub || decoded.id;
+
+        if (!userId) {
+            return errorResponse(res, 401, 'Struktur token tidak valid. ID pengguna hilang.');
+        }
+
+        // 4. Verifikasi eksistensi pengguna
+        const currentUser = await db.User.findByPk(userId, {
             attributes: ['id', 'email', 'role']
         });
 
         if (!currentUser) {
-            return errorResponse(res, 401, 'Sesi tidak valid.');
+            return errorResponse(res, 401, 'Sesi tidak valid. Pengguna tidak ditemukan di sistem.');
         }
 
         req.user = currentUser;
         next();
     } catch (error) {
-        return errorResponse(res, 401, 'Token kedaluwarsa atau tidak valid.');
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+            return errorResponse(res, 401, 'Sesi telah berakhir atau token tidak valid.');
+        }
+        next(error);
     }
 };
 

@@ -122,3 +122,61 @@ export const getAllStores = asyncHandler(async (req, res) => {
         stores
     );
 });
+
+/**
+ * @desc    Mendapatkan detail satu toko berdasarkan ID (Public)
+ * @route   GET /api/stores/:id
+ * @access  Public
+ */
+export const getStoreById = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    // Memanggil service untuk mencari toko berdasarkan ID (UUID)
+    const store = await StoreService.findById(id);
+
+    if (!store) {
+        return errorResponse(res, 404, `Toko dengan ID ${id} tidak ditemukan.`);
+    }
+
+    // Mengembalikan data toko
+    return successResponse(
+        res, 
+        200, 
+        'Berhasil memuat detail toko.', 
+        store
+    );
+});
+
+/**
+ * @desc    Menambahkan informasi rekening bank baru untuk pencairan dana
+ * @route   POST /api/stores/bank-account
+ * @access  Private (Role: Seller)
+ */
+export const createBankAccount = asyncHandler(async (req, res) => {
+    const userId = req.user.id; // Didapatkan dari JWT token via middleware
+    const { bank_name, bank_account_number, bank_account_name } = req.body;
+
+    // Validasi input: pastikan tidak ada yang kosong
+    if (!bank_name || !bank_account_number || !bank_account_name) {
+        return errorResponse(res, 400, 'Nama bank, nomor rekening, dan nama pemilik rekening wajib diisi.');
+    }
+
+    // Panggil fungsi create di Service
+    const updatedStore = await StoreService.createBankInfo(userId, {
+        bank_name,
+        bank_account_number,
+        bank_account_name
+    });
+
+    // Gunakan status 201 (Created)
+    return successResponse(
+        res, 
+        201, 
+        'Informasi rekening bank berhasil ditambahkan.', 
+        {
+            bank_name: updatedStore.bank_name,
+            bank_account_number: updatedStore.bank_account_number,
+            bank_account_name: updatedStore.bank_account_name
+        }
+    );
+});

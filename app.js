@@ -18,6 +18,7 @@ import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
 import addressRoutes from './routes/addressRoutes.js';
 import shippingRoutes from './routes/shippingRoutes.js';
 import gradingRoutes from './routes/gradingRoutes.js';
@@ -36,11 +37,7 @@ app.use('/public', express.static('public'));
 // ==========================================
 // 1. GLOBAL MIDDLEWARES & SECURITY
 // ==========================================
-/**
- * ⚡ PEMBARUAN SECURITY POLICY:
- * Mengizinkan pemuatan resource video (streaming) lintas origin (CORS) 
- * untuk mengatasi error ERR_BLOCKED_BY_RESPONSE.NotSameOrigin.
- */
+// ⚡ FIX: Memulihkan konfigurasi Helmet untuk mencegah regresi CORS pada Video Streaming
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginEmbedderPolicy: false
@@ -115,6 +112,7 @@ app.use('/api/v1/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/api/v1/addresses', addressRoutes);
 app.use('/api/v1/shipping', shippingRoutes);
 app.use('/api/grading', gradingRoutes);

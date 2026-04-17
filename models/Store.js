@@ -1,78 +1,84 @@
-import { Model, DataTypes } from 'sequelize';
+import { Model, DataTypes } from "sequelize";
 
 export default class Store extends Model {
-    static init(sequelize) {
-        return super.init({
-            id: {
-                type: DataTypes.UUID,
-                defaultValue: DataTypes.UUIDV4,
-                primaryKey: true,
-            },
-            user_id: {
-                type: DataTypes.UUID,
-                allowNull: false,
-                unique: true,
-            },
-            name: {
-                type: DataTypes.STRING,
-                allowNull: false,
-                unique: true,
-            },
-            description: {
-                type: DataTypes.TEXT,
-                allowNull: true,
-            },
-            // Gambar Toko
-            logo_url: {
-                type: DataTypes.STRING,
-                allowNull: true,
-            },
-            banner_url: {
-                type: DataTypes.STRING,
-                allowNull: true,
-            },
-            // Jam Operasional
-            working_days: {
-                type: DataTypes.STRING,
-                allowNull: true,
-            },
-            working_hours: {
-                type: DataTypes.STRING,
-                allowNull: true,
-            },
-            // Media Sosial (Object JSON)
-            social_links: {
-                type: DataTypes.JSON,
-                allowNull: true,
-                defaultValue: {
-                    instagram: "",
-                    facebook: "",
-                    youtube: "",
-                    website: ""
-                }
-            },
-            ktp_url: {
-                type: DataTypes.STRING,
-                allowNull: true,
-            },
-            status: {
-                type: DataTypes.ENUM('pending', 'approved', 'rejected', 'suspended'),
-                defaultValue: 'pending',
-                allowNull: false,
-            },
-            balance: {
-                type: DataTypes.DECIMAL(15, 2),
-                defaultValue: 0.00,
-                allowNull: false,
-            }
-        }, {
-            sequelize,
-            tableName: 'stores',
-            modelName: 'Store',
-            underscored: true, // Ini akan mengubah social_links menjadi social_links di DB
-            timestamps: true,
-        });
-    }
+  static init(sequelize) {
+    return super.init(
+      {
+        id: {
+          type: DataTypes.UUID,
+          defaultValue: DataTypes.UUIDV4,
+          primaryKey: true,
+        },
+        user_id: {
+          type: DataTypes.UUID,
+          allowNull: false,
+          unique: true,
+        },
+        name: {
+          type: DataTypes.STRING,
+          allowNull: false,
+          unique: true,
+        },
+        description: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        // Gambar Toko
+        logo_url: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        banner_url: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        // Jam Operasional
+        working_days: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        working_hours: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        // Media Sosial (Object JSON)
+        social_links: {
+          type: DataTypes.JSON,
+          allowNull: true,
+          defaultValue: {
+            instagram: "",
+            facebook: "",
+            youtube: "",
+            website: "",
+          },
+        },
+        ktp_url: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        status: {
+          type: DataTypes.ENUM("pending", "approved", "rejected", "suspended"),
+          defaultValue: "pending",
+          allowNull: false,
+        },
+        bank_name: { type: DataTypes.STRING, allowNull: true },
+        bank_account_number: { type: DataTypes.STRING, allowNull: true },
+        bank_account_name: { type: DataTypes.STRING, allowNull: true },
+        balance: {
+          type: DataTypes.DECIMAL(15, 2),
+          defaultValue: 0.0,
+          allowNull: false,
+        },
+      },
+      {
+        sequelize,
+        tableName: "stores",
+        modelName: "Store",
+        underscored: true, // Ini akan mengubah social_links menjadi social_links di DB
+        timestamps: true,
+      },
+    );
+  }
 
     static associate(models) {
         this.belongsTo(models.User, {
@@ -91,6 +97,7 @@ export default class Store extends Model {
             foreignKey: 'store_id', 
             as: 'walletTransactions' 
         });
+        this.hasMany(models.Review, { foreignKey: 'store_id', as: 'reviews' });
         this.belongsTo(models.Address, { 
             foreignKey: 'origin_address_id', 
             as: 'originAddress' });

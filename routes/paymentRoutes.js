@@ -1,7 +1,17 @@
 import express from 'express';
-import { simulateWebhook } from '../controllers/paymentController.js';
+import { simulateWebhook, createSession, midtransCallback, getBillingStatus, verifyPaymentManual } from '../controllers/paymentController.js';
+import { authenticate } from '../middlewares/auth.js';
 
 const router = express.Router();
+
+// Endpoint untuk mendapatkan URL Pembayaran iPaymu
+router.post('/create-session', authenticate, createSession);
+
+
+// POST /api/payments/callback
+// Catatan: Endpoint ini tidak menggunakan middleware 'authenticate' 
+// karena dipanggil oleh server iPaymu, bukan oleh user login.
+router.post('/callback', midtransCallback);
 
 /**
  * @swagger
@@ -45,5 +55,9 @@ const router = express.Router();
  *         description: Pesanan tidak ditemukan
  */
 router.post('/webhook-simulation', simulateWebhook);
+
+router.get('/billing/:billing_id', authenticate, getBillingStatus);
+router.post('/verify/:billing_id', authenticate, verifyPaymentManual);
+
 
 export default router;
