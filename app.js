@@ -1,4 +1,6 @@
 import express from 'express';
+import http from 'http'; // [NEW] Modul bawaan Node.js
+import { Server } from 'socket.io'; // [NEW] Import Socket.io Server
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -9,6 +11,9 @@ import swaggerUi from 'swagger-ui-express';
 // Import Middlewares & Utils
 import { errorHandler } from './middlewares/errorHandler.js';
 import { errorResponse, successResponse } from './utils/apiResponse.js';
+
+// Import Socket Controllers (Modul Lelang)
+import initializeAuctionSocket from './socket/auctionSocket.js'; // [NEW]
 
 // Import Routes
 import authRoutes from './routes/authRoutes.js';
@@ -23,11 +28,14 @@ import addressRoutes from './routes/addressRoutes.js';
 import shippingRoutes from './routes/shippingRoutes.js';
 import gradingRoutes from './routes/gradingRoutes.js';
 import disputeRoutes from './routes/disputeRoutes.js';
+import auctionRoutes from './routes/auctionRoutes.js';
 
 // Load environment variables
 dotenv.config();
 
+// Inisialisasi Express & Raw HTTP Server
 const app = express();
+const server = http.createServer(app); // [NEW] Membungkus Express untuk kapabilitas WebSocket
 
 // ==========================================
 // STATIC FILES SERVER
@@ -37,7 +45,6 @@ app.use('/public', express.static('public'));
 // ==========================================
 // 1. GLOBAL MIDDLEWARES & SECURITY
 // ==========================================
-// ⚡ FIX: Memulihkan konfigurasi Helmet untuk mencegah regresi CORS pada Video Streaming
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginEmbedderPolicy: false
@@ -59,7 +66,23 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 
 // ==========================================
-// 2. SWAGGER UI CONFIGURATION
+// 2. WEBSOCKET (SOCKET.IO) INITIALIZATION
+// ==========================================
+// [NEW] Mengikat Socket.io ke HTTP Server dengan konfigurasi CORS yang ekuivalen
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CLIENT_URL || '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    credentials: true
+  }
+});
+
+// Mendaftarkan logic Controller untuk namespace Auction
+initializeAuctionSocket(io);
+
+
+// ==========================================
+// 3. SWAGGER UI CONFIGURATION
 // ==========================================
 const swaggerOptions = {
   swaggerDefinition: {
@@ -98,7 +121,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 
 // ==========================================
-// 3. ROUTING MOUNT POINTS
+// 4. ROUTING MOUNT POINTS
 // ==========================================
 // Health Check Endpoint
 app.get('/health', (req, res) => {
@@ -117,10 +140,11 @@ app.use('/api/v1/addresses', addressRoutes);
 app.use('/api/v1/shipping', shippingRoutes);
 app.use('/api/grading', gradingRoutes);
 app.use('/api/disputes', disputeRoutes);
+app.use('/api/auctions', auctionRoutes); 
 
 
 // ==========================================
-// 4. 404 & GLOBAL ERROR HANDLING
+// 5. 404 & GLOBAL ERROR HANDLING
 // ==========================================
 app.use((req, res) => {
   return errorResponse(res, 404, `Can't find ${req.originalUrl} on this server`);
@@ -131,13 +155,16 @@ app.use(errorHandler);
 
 
 // ==========================================
-// 5. SERVER INITIALIZATION
+// 6. SERVER INITIALIZATION
 // ==========================================
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+// [FIX] Menggunakan server.listen alih-alih app.listen agar trafik HTTP dan WS dikelola oleh layer yang sama
+server.listen(PORT, () => {
   console.log(`[SERVER] Running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   console.log(`[SWAGGER] Documentation available at http://localhost:${PORT}/api-docs`);
+  console.log(`[WEBSOCKET] Socket.io engine is ready and attached to HTTP Server`);
 });
 
+// Mengekspor app (Express) untuk keperluan integrasi testing (Jest/Supertest) jika diperlukan
 export default app;
