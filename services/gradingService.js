@@ -1,10 +1,14 @@
 // File: dialog-id-be/services/gradingService.js
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import db from '../models/index.js';
 
+// Setup penunjuk path absolut (karena ini ES Module)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 class GradingService {
-    /**
-     * Buyer meminta grading (video detail) untuk suatu produk
-     */
     static async requestGrading(buyerId, productId) {
         const product = await db.Product.findByPk(productId);
         if (!product) {
@@ -19,22 +23,17 @@ class GradingService {
 
         if (existingRequest) {
             const error = new Error('Anda sudah pernah mengajukan grading untuk produk ini.');
-            error.statusCode = 409; // Conflict
+            error.statusCode = 409;
             throw error;
         }
 
-        // GANTI STATUS SAAT CREATE:
         return await db.GradingRequest.create({
             buyer_id: buyerId,
             product_id: productId,
-            status: 'AWAITING_SELLER_MEDIA' // <--- Sesuaikan dengan ENUM baru di migrasi lo
+            status: 'AWAITING_SELLER_MEDIA'
         });
     }
 
-    /**
-     * Seller melihat daftar antrean request grading untuk tokonya
-     * Menerapkan Eager Loading (Information Expert Pattern)
-     */
     static async getStoreGradingRequests(storeId) {
         return await db.GradingRequest.findAll({
             include: [
@@ -56,19 +55,14 @@ class GradingService {
                 {
                     model: db.User,
                     as: 'buyer',
-                    // ⚡ FIX: Sesuaikan nama kolom dengan DB (full_name), lalu beri alias 'name' untuk Frontend
-                    attributes: ['id', ['full_name', 'name']]
+                    attributes: ['id', ['full_name', 'name']] // Proteksi jika 'name' tidak ada di tabel User
                 }
             ],
             order: [['created_at', 'DESC']]
         });
     }
 
-    /**
-     * Seller mengunggah video grading
-     */
     static async fulfillGrading(storeId, gradingId, file) {
-        // Tarik data request beserta informasi produknya
         const request = await db.GradingRequest.findByPk(gradingId, {
             include: [{ model: db.Product, as: 'product' }]
         });
@@ -79,7 +73,6 @@ class GradingService {
             throw error;
         }
 
-        // Validasi Otorisasi Akses Silang (Cross-Access Prevention)
         if (request.product.store_id !== storeId) {
             const error = new Error('Akses ditolak. Produk ini bukan milik toko Anda.');
             error.statusCode = 403;
@@ -92,10 +85,32 @@ class GradingService {
             throw error;
         }
 
-        request.status = 'fulfilled';
-        // Konsistensi Path: Hilangkan '/public' seperti di Fase B
-        request.video_url = `/uploads/videos/${file.filename}`;
+        // 1. Transisi State
+        request.status = 'MEDIA_READY';
 
+        // 2. ⚡ DETERMINISTIC FILE HANDLING
+        // Pindahkan file dari lokasi sementara Multer ke lokasi privat dengan nama Fix
+        const targetDir = path.join(__dirname, '..', 'storage', 'private_media');
+
+        // Buat folder jika belum ada
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+
+        // Kita standarisasi semua ekstensi video grading dengan .mp4 (atau gunakan aslinya misal .mov)
+        const ext = path.extname(file.originalname).toLowerCase() || '.mp4';
+        const targetPath = path.join(targetDir, `grading_${gradingId}${ext}`);
+
+        // Proses Pindah + Rename
+        try {
+            fs.renameSync(file.path, targetPath);
+        } catch (err) {
+            // Fallback (Cegah error EXDEV jika upload folder ada di partisi disk yang berbeda)
+            fs.copyFileSync(file.path, targetPath);
+            fs.unlinkSync(file.path);
+        }
+
+        // 3. Save state (Tidak perlu menyimpan request.video_url karena kolomnya tidak ada di DB)
         await request.save();
         return request;
     }

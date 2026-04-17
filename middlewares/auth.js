@@ -3,39 +3,48 @@ import jwt from 'jsonwebtoken';
 import db from '../models/index.js';
 import { errorResponse } from '../utils/apiResponse.js';
 
-/**
- * Middleware untuk memverifikasi JWT Token dari header Authorization
- */
 export const authenticate = async (req, res, next) => {
     try {
         let token;
 
-        // 1. Ekstrak token secara aman
+        // 1. Ekstrak dari Header (Prioritas Utama)
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
+        }
+        // 2. Ekstrak dari Query Params (Mutlak untuk pemutaran tag <video> lintas domain)
+        else if (req.query.token) {
+            token = req.query.token;
         }
 
         if (!token) {
             return errorResponse(res, 401, 'Akses ditolak. Token otorisasi tidak ditemukan.');
         }
 
-        // 2. Verifikasi JWT
+        // 3. Verifikasi Token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // 3. Validasi eksistensi user (Mencegah phantom session jika user dihapus/diblokir)
-        const currentUser = await db.User.findByPk(decoded.id, {
-            attributes: ['id', 'email', 'role'] // Hanya ambil field esensial
+        // ⚡ FIX LOGICAL: Tangkap ID pengguna baik dari claim 'sub' maupun 'id'
+        const userId = decoded.sub || decoded.id;
+
+        if (!userId) {
+            return errorResponse(res, 401, 'Struktur token tidak valid. ID pengguna hilang.');
+        }
+
+        // 4. Verifikasi eksistensi pengguna
+        const currentUser = await db.User.findByPk(userId, {
+            attributes: ['id', 'email', 'role']
         });
 
         if (!currentUser) {
-            return errorResponse(res, 401, 'Sesi tidak valid. Pengguna tidak ditemukan.');
+            return errorResponse(res, 401, 'Sesi tidak valid. Pengguna tidak ditemukan di sistem.');
         }
 
-        // 4. Inject data user ke objek request
         req.user = currentUser;
         next();
     } catch (error) {
-        // Biarkan Global Error Handler menangani spesifikasi error JWT
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+            return errorResponse(res, 401, 'Sesi telah berakhir atau token tidak valid.');
+        }
         next(error);
     }
 };
