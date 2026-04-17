@@ -7,122 +7,122 @@ class OrderService {
      * Menggunakan Pessimistic Locking dan Transaksi ACID yang kebal manipulasi.
      */
     static async createOrder(buyerId, payload) {
-    const { address_id, orders } = payload;
+        const { address_id, orders } = payload;
 
-    // 1. VALIDASI ALAMAT (DI LUAR TRANSAKSI)
-    const destinationAddress = await db.Address.findOne({ 
-        where: { id: address_id, user_id: buyerId } 
-    });
-    if (!destinationAddress) throw { statusCode: 404, message: 'Alamat pengiriman tidak ditemukan.' };
+        // 1. VALIDASI ALAMAT (DI LUAR TRANSAKSI)
+        const destinationAddress = await db.Address.findOne({
+            where: { id: address_id, user_id: buyerId }
+        });
+        if (!destinationAddress) throw { statusCode: 404, message: 'Alamat pengiriman tidak ditemukan.' };
 
-    const fullAddressString = `${destinationAddress.address_detail}, ${destinationAddress.district}, ${destinationAddress.city}, ${destinationAddress.province} ${destinationAddress.postal_code}`;
+        const fullAddressString = `${destinationAddress.address_detail}, ${destinationAddress.district}, ${destinationAddress.city}, ${destinationAddress.province} ${destinationAddress.postal_code}`;
 
-    // 2. MULAI TRANSAKSI
-    const t = await db.sequelize.transaction();
+        // 2. MULAI TRANSAKSI
+        const t = await db.sequelize.transaction();
 
-    try {
-        let totalGrandTotal = 0;
-        const createdOrders = [];
+        try {
+            let totalGrandTotal = 0;
+            const createdOrders = [];
 
-        // --- TAHAP A: BUAT MASTER BILLING ---
-        const billing = await db.Billing.create({
-            buyer_id: buyerId,
-            total_amount: 0, 
-            status: 'unpaid'
-        }, { transaction: t });
+            // --- TAHAP A: BUAT MASTER BILLING ---
+            const billing = await db.Billing.create({
+                buyer_id: buyerId,
+                total_amount: 0,
+                status: 'unpaid'
+            }, { transaction: t });
 
-        // --- TAHAP B: LOOPING PER TOKO ---
-        for (const storeOrder of orders) {
-            const { store_id, courier_code, service_type, shipping_fee, items } = storeOrder;
+            // --- TAHAP B: LOOPING PER TOKO ---
+            for (const storeOrder of orders) {
+                const { store_id, courier_code, service_type, shipping_fee, items } = storeOrder;
 
-            const store = await db.Store.findByPk(store_id, { transaction: t });
-            if (!store) throw { statusCode: 404, message: `Toko ${store_id} tidak ditemukan.` };
+                const store = await db.Store.findByPk(store_id, { transaction: t });
+                if (!store) throw { statusCode: 404, message: `Toko ${store_id} tidak ditemukan.` };
 
-            let subtotal = 0;
-            let storeGradingFee = 0;
-            const orderItemsData = [];
+                let subtotal = 0;
+                let storeGradingFee = 0;
+                const orderItemsData = [];
 
-            // --- TAHAP C: LOOPING ITEM PER TOKO ---
-            for (const item of items) {
-                const product = await db.Product.findOne({
-                    where: { id: item.product_id, store_id: store.id },
-                    lock: t.LOCK.UPDATE, // Tetap gunakan lock untuk validasi yang akurat
-                    transaction: t
-                });
+                // --- TAHAP C: LOOPING ITEM PER TOKO ---
+                for (const item of items) {
+                    const product = await db.Product.findOne({
+                        where: { id: item.product_id, store_id: store.id },
+                        lock: t.LOCK.UPDATE, // Tetap gunakan lock untuk validasi yang akurat
+                        transaction: t
+                    });
 
-                if (!product) throw { statusCode: 404, message: `Produk ${item.product_id} tidak ditemukan di toko ini.` };
-                
-                // VALIDASI STOK (Tetap ada agar tidak bisa checkout jika kosong)
-                if (product.stock < item.qty) throw { statusCode: 400, message: `Stok ${product.name} tidak mencukupi.` };
+                    if (!product) throw { statusCode: 404, message: `Produk ${item.product_id} tidak ditemukan di toko ini.` };
 
-                subtotal += parseFloat(product.price) * item.qty;
+                    // VALIDASI STOK (Tetap ada agar tidak bisa checkout jika kosong)
+                    if (product.stock < item.qty) throw { statusCode: 400, message: `Stok ${product.name} tidak mencukupi.` };
 
-                // Validasi Grading Request
-                const gradingRequest = await db.GradingRequest.findOne({
-                    where: { buyer_id: buyerId, product_id: product.id, status: 'fulfilled' },
-                    transaction: t
-                });
-                if (gradingRequest) storeGradingFee += 25000;
+                    subtotal += parseFloat(product.price) * item.qty;
 
-                orderItemsData.push({
-                    product_id: product.id,
-                    qty: item.qty,
-                    price_at_purchase: product.price,
-                    grading_at_purchase: product.metadata?.grading || 'Raw'
-                });
+                    // (FIX) LOGIKA GRADING:
+                    // Gunakan nilai yang di-inject dari Controller. Mencegah Double Query & Hardcode Price.
+                    if (item.apply_grading_fee) {
+                        storeGradingFee += item.grading_fee_value || 0;
+                    }
 
-                // PENGURANGAN STOK DIHAPUS DARI SINI
-                // Logika dipindah ke handleMidtransNotification
+                    
+                    orderItemsData.push({
+                        product_id: product.id,
+                        qty: item.qty,
+                        price_at_purchase: product.price,
+                        grading_at_purchase: product.metadata?.grading || 'Raw'
+                    });
+
+                    // PENGURANGAN STOK DIHAPUS DARI SINI
+                    // Logika dipindah ke handleMidtransNotification
+                }
+
+                const storeGrandTotal = subtotal + Number(shipping_fee) + storeGradingFee;
+                totalGrandTotal += storeGrandTotal;
+
+                // --- TAHAP D: BUAT PESANAN (ORDER) PER TOKO ---
+                const order = await db.Order.create({
+                    billing_id: billing.id,
+                    buyer_id: buyerId,
+                    store_id: store.id,
+                    subtotal,
+                    shipping_fee,
+                    grading_fee: storeGradingFee,
+                    grand_total: storeGrandTotal,
+                    status: 'pending_payment',
+                    shipping_address: fullAddressString,
+                    courier_company: courier_code,
+                    service_type: service_type
+                }, { transaction: t });
+
+                // Simpan Item Pesanan
+                const itemsWithOrderId = orderItemsData.map(oi => ({ ...oi, order_id: order.id }));
+                await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
+
+                // Simpan ke Escrow per Order
+                await db.Escrow.create({
+                    order_id: order.id,
+                    amount_held: storeGrandTotal,
+                    status: 'held'
+                }, { transaction: t });
+
+                createdOrders.push(order);
             }
 
-            const storeGrandTotal = subtotal + Number(shipping_fee) + storeGradingFee;
-            totalGrandTotal += storeGrandTotal;
+            // --- TAHAP E: UPDATE TOTAL DI MASTER BILLING ---
+            await billing.update({ total_amount: totalGrandTotal }, { transaction: t });
 
-            // --- TAHAP D: BUAT PESANAN (ORDER) PER TOKO ---
-            const order = await db.Order.create({
+            await t.commit();
+
+            return {
                 billing_id: billing.id,
-                buyer_id: buyerId,
-                store_id: store.id,
-                subtotal,
-                shipping_fee,
-                grading_fee: storeGradingFee,
-                grand_total: storeGrandTotal,
-                status: 'pending_payment',
-                shipping_address: fullAddressString,
-                courier_company: courier_code,
-                service_type: service_type
-            }, { transaction: t });
+                grand_total: totalGrandTotal,
+                orders: createdOrders
+            };
 
-            // Simpan Item Pesanan
-            const itemsWithOrderId = orderItemsData.map(oi => ({ ...oi, order_id: order.id }));
-            await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
-
-            // Simpan ke Escrow per Order
-            await db.Escrow.create({
-                order_id: order.id,
-                amount_held: storeGrandTotal,
-                status: 'held'
-            }, { transaction: t });
-
-            createdOrders.push(order);
+        } catch (error) {
+            await t.rollback();
+            throw error;
         }
-
-        // --- TAHAP E: UPDATE TOTAL DI MASTER BILLING ---
-        await billing.update({ total_amount: totalGrandTotal }, { transaction: t });
-
-        await t.commit();
-
-        return {
-            billing_id: billing.id,
-            grand_total: totalGrandTotal,
-            orders: createdOrders
-        };
-
-    } catch (error) {
-        await t.rollback();
-        throw error;
     }
-}
 
     /**
      * Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)
@@ -300,37 +300,37 @@ class OrderService {
     }
 
     static async getAllOrdersForAdmin(statusFilter) {
-    const whereClause = {};
-    if (statusFilter) whereClause.status = statusFilter;
+        const whereClause = {};
+        if (statusFilter) whereClause.status = statusFilter;
 
-    return await db.Order.findAll({
-        where: whereClause,
-        include: [
-            {
-                model: db.User,
-                as: 'buyer',
-                attributes: ['id', 'full_name', 'email']
-            },
-            {
-                model: db.Store,
-                as: 'store',
-                attributes: ['id', 'name']
-            },
-            {
-                model: db.OrderItem,
-                as: 'items',
-                include: [
-                    {
-                        model: db.Product,
-                        as: 'product',
-                        attributes: ['id', 'name', 'price']
-                    }
-                ]
-            }
-        ],
-        order: [['created_at', 'DESC']]
-    });
-}
+        return await db.Order.findAll({
+            where: whereClause,
+            include: [
+                {
+                    model: db.User,
+                    as: 'buyer',
+                    attributes: ['id', 'full_name', 'email']
+                },
+                {
+                    model: db.Store,
+                    as: 'store',
+                    attributes: ['id', 'name']
+                },
+                {
+                    model: db.OrderItem,
+                    as: 'items',
+                    include: [
+                        {
+                            model: db.Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'price']
+                        }
+                    ]
+                }
+            ],
+            order: [['created_at', 'DESC']]
+        });
+    }
 }
 
 export default OrderService;

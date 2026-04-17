@@ -10,12 +10,24 @@ export const getProductDetails = async (productId) => {
         include: [
             {
                 model: db.ProductMedia,
-                as: 'media', // Ambil semua foto
+                as: 'media',
             },
             {
                 model: db.Store,
                 as: 'store',
                 attributes: ['id', 'name', 'description']
+            },
+            // ⚡ FIX: TAMBAHKAN RELASI AUCTION DI SINI
+            {
+                model: db.Auction,
+                as: 'auction',
+                // Kita hanya ingin menampilkan lelang yang valid (bukan yang gagal/batal)
+                where: {
+                    status: {
+                        [Op.notIn]: ['FAILED']
+                    }
+                },
+                required: false // ⚡ PENTING: required false agar produk biasa (tanpa lelang) tetep nampil
             }
         ]
     });
@@ -36,7 +48,7 @@ export const createProduct = async (storeId, productData, files) => {
         // 1. Buat record Produk Utama
         const product = await db.Product.create({
             store_id: storeId,
-            ...productData 
+            ...productData
         }, { transaction: t });
 
         // 2. Periksa apakah files ada (Multer .array() mengirim array)
@@ -44,7 +56,7 @@ export const createProduct = async (storeId, productData, files) => {
             const mediaRecords = files.map((file, index) => ({
                 product_id: product.id,
                 // Hilangkan '/public' jika folder uploads Anda sudah di-set statis
-                media_url: `/uploads/products/${file.filename}`, 
+                media_url: `/uploads/products/${file.filename}`,
                 is_primary: index === 0 // File pertama jadi foto utama
             }));
 
@@ -82,9 +94,9 @@ export const updateProduct = async (productId, storeId, updateData, files) => {
         // 2. Jika ada file foto baru yang diunggah
         if (files && files.length > 0) {
             // Hapus record media lama di database
-            await db.ProductMedia.destroy({ 
+            await db.ProductMedia.destroy({
                 where: { product_id: product.id },
-                transaction: t 
+                transaction: t
             });
 
             // Buat record media baru
@@ -92,14 +104,14 @@ export const updateProduct = async (productId, storeId, updateData, files) => {
                 product_id: product.id,
                 // Pastikan path konsisten dengan /public/uploads
                 media_url: `/uploads/products/${file.filename}`,
-                is_primary: index === 0 
+                is_primary: index === 0
             }));
 
             await db.ProductMedia.bulkCreate(mediaRecords, { transaction: t });
         }
 
         await t.commit();
-        
+
         // 3. Kembalikan detail terbaru (pastikan fungsi ini melakukan include ProductMedia)
         return await getProductDetails(productId);
     } catch (error) {
@@ -201,7 +213,7 @@ export const getProductsByStore = async (storeId, filters = { standard: {}, dyna
                 model: db.ProductMedia,
                 as: 'media',
                 // Ambil foto utama saja untuk tampilan list
-                where: { is_primary: true }, 
+                where: { is_primary: true },
                 required: false
             }
         ],

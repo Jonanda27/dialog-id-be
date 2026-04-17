@@ -4,27 +4,39 @@ import {
     getAuctionsByStore,
     cancelAuction
 } from '../controllers/auctionController.js';
-
-// Asumsi middleware autentikasi eksisting di repository Anda
-import { protect } from '../middlewares/auth.js';
-import { isSeller } from '../middlewares/store.js'; // Jika ada middleware spesifik role
+import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// Semua rute lelang untuk Seller wajib melewati Autentikasi
-router.use(protect);
+// Proteksi global untuk semua rute lelang
+router.use(authenticate, authorize('seller'), isStoreApproved);
 
-// Jika ada pengecekan Role Seller
-if (isSeller) {
-    router.use(isSeller);
-}
+/**
+ * @swagger
+ * /api/v1/auctions/my-store:
+ *   get:
+ *     summary: Mendapatkan daftar lelang milik toko sendiri (Seller Only)
+ *     tags: [Auctions]
+ */
+// ⚡ FIX: Ganti '/store' menjadi '/my-store' agar cocok dengan Frontend
+router.get('/my-store', getAuctionsByStore);
 
-// Endpoint CRUD Jadwal Lelang
+/**
+ * @swagger
+ * /api/v1/auctions:
+ *   post:
+ *     summary: Buat lelang baru
+ *     tags: [Auctions]
+ */
 router.post('/', createAuction);
-router.get('/store', getAuctionsByStore);
-router.put('/:id/cancel', cancelAuction);
 
-// Endpoint tambahan di masa depan (misal: mengambil detail 1 lelang spesifik)
-// router.get('/:id', getAuctionDetail);
+/**
+ * @swagger
+ * /api/v1/auctions/{id}/cancel:
+ *   put:
+ *     summary: Batalkan lelang
+ *     tags: [Auctions]
+ */
+router.put('/:id/cancel', cancelAuction);
 
 export default router;

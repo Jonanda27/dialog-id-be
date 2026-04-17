@@ -140,7 +140,7 @@ app.use('/api/v1/addresses', addressRoutes);
 app.use('/api/v1/shipping', shippingRoutes);
 app.use('/api/grading', gradingRoutes);
 app.use('/api/disputes', disputeRoutes);
-app.use('/api/auctions', auctionRoutes); 
+app.use('/api/v1/auctions', auctionRoutes); 
 
 
 // ==========================================

@@ -1,10 +1,26 @@
+import 'dotenv/config';
 import Redis from 'ioredis';
 
-// Inisialisasi koneksi Redis (sesuaikan dengan environment variable Anda)
-const redis = new Redis({
-    host: process.env.REDIS_HOST || '127.0.0.1',
-    port: process.env.REDIS_PORT || 6379,
-    password: process.env.REDIS_PASSWORD || null,
+const redisUrl = process.env.REDIS_URL;
+
+if (!redisUrl) {
+    console.error("[REDIS] ❌ ERROR: REDIS_URL tidak ditemukan di .env!");
+}
+
+const redis = new Redis(redisUrl, {
+    // Settingan wajib buat Cloud Redis biar gak gampang pegel (disconnect)
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+});
+
+// Listener biar lo tau status koneksinya di terminal
+redis.on('connect', () => {
+    console.log('[REDIS] 🚀 Terhubung ke Cloud Redis (Upstash) ✅');
+});
+
+redis.on('error', (err) => {
+    console.error('[REDIS] ❌ Gagal Koneksi:', err.message);
 });
 
 /**

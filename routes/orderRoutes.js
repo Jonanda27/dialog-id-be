@@ -238,32 +238,32 @@ router.get('/:id', authenticate, getOrderById);
  *       404:
  *         description: Pesanan tidak ditemukan (Not Found)
  */
-router.patch('/:id/ship', authenticate, authorize('seller'),isStoreApproved, ship);
-
+router.patch('/:id/ship', authenticate, authorize('seller'), isStoreApproved, ship);
 /**
  * @swagger
  * /api/orders/admin/all:
- * get:
- * summary: Mengambil semua pesanan di platform (Admin Only)
- * tags: [Orders]
- * security:
- * - bearerAuth: []
- * parameters:
- * - in: query
- * name: status
- * schema:
- * type: string
- * description: Filter berdasarkan status pesanan
- * responses:
- * 200:
- * description: Berhasil mengambil semua data pesanan
+ *   get:
+ *     summary: Mengambil semua pesanan di platform (Admin Only)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           description: Filter berdasarkan status pesanan
+ *     responses:
+ *       200:
+ *         description: Berhasil mengambil semua data pesanan
  */
 router.get(
-    '/admin/all', 
-    authenticate, 
-    authorize('admin'), 
+    '/admin/all',
+    authenticate,
+    authorize('admin'),
     getAllOrders
 );
+
 
 /**
  * @swagger

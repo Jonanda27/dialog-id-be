@@ -42,33 +42,40 @@ export const calculateShipping = asyncHandler(async (req, res) => {
 export const checkout = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
 
-    // Validasi payload (pastikan checkoutSchema sudah mendukung array orders)
+    // Validasi payload
     const validatedData = checkoutSchema.parse(req.body);
 
     // --- LOGIKA DOMAIN: INJEKSI BIAYA GRADING (SERVER-SIDE) ---
-    // Kita melakukan map pada items untuk mengecek apakah ada tiket grading yang aktif
-    const itemsWithGrading = await Promise.all(validatedData.items.map(async (item) => {
-        const activeGrading = await db.GradingRequest.findOne({
-            where: {
-                buyer_id: buyerId,
-                product_id: item.product_id,
-                status: 'MEDIA_READY' // Hanya bebankan biaya jika video sudah siap ditonton
-            }
-        });
+    // (FIX) Iterasi ke dalam array orders terlebih dahulu
+    const processedOrders = await Promise.all(validatedData.orders.map(async (storeOrder) => {
+        // Kemudian iterasi items di dalam storeOrder tersebut
+        const itemsWithGrading = await Promise.all(storeOrder.items.map(async (item) => {
+            const activeGrading = await db.GradingRequest.findOne({
+                where: {
+                    buyer_id: buyerId,
+                    product_id: item.product_id,
+                    status: 'MEDIA_READY' // Hanya bebankan biaya jika video sudah siap ditonton
+                }
+            });
 
+            return {
+                ...item,
+                apply_grading_fee: !!activeGrading,
+                grading_fee_value: activeGrading ? GRADING_FEE_AMOUNT : 0
+            };
+        }));
+
+        // Kembalikan objek storeOrder dengan array items yang sudah dimodifikasi
         return {
-            ...item,
-            // Jika ada tiket aktif, tandai agar Service Layer menyisipkan biaya ke OrderItem
-            apply_grading_fee: !!activeGrading,
-            grading_fee_value: activeGrading ? GRADING_FEE_AMOUNT : 0
+            ...storeOrder,
+            items: itemsWithGrading
         };
     }));
 
-    // Ganti items asli dengan data yang sudah terinjeksi informasi biaya grading
-    validatedData.items = itemsWithGrading;
+    // Ganti orders asli dengan data yang sudah terinjeksi informasi biaya grading
+    validatedData.orders = processedOrders;
 
     try {
-        // Service sekarang mengembalikan objek Billing Master dengan injeksi grading fee
         const checkoutResult = await OrderService.createOrder(buyerId, validatedData);
 
         return successResponse(
@@ -94,7 +101,6 @@ export const checkout = asyncHandler(async (req, res) => {
 });
 
 
-// Endpoint untuk mengambil detail pesanan spesifik (Dibutuhkan Frontend di halaman Pembayaran)
 export const getOrderById = asyncHandler(async (req, res) => {
     const userId = req.user.id;
     const orderId = req.params.id;
@@ -136,10 +142,8 @@ export const complete = asyncHandler(async (req, res) => {
     return successResponse(res, 200, 'Pesanan diselesaikan. Dana Escrow telah dirilis ke dompet Seller.', result);
 });
 
-// ⚡ BARU: Endpoint untuk Admin melihat seluruh transaksi di platform
 export const getAllOrders = asyncHandler(async (req, res) => {
     const statusFilter = req.query.status;
-
     const result = await OrderService.getAllOrdersForAdmin(statusFilter);
 
     return successResponse(
