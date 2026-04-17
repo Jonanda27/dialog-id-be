@@ -16,6 +16,7 @@ import GradingRequest from './GradingRequest.js';
 import AddressInit from './Address.js';
 import Review from './Review.js';
 import ReviewMedia from './ReviewMedia.js';
+import Billing from './Billing.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -36,6 +37,7 @@ const models = {
   SubCategory: SubCategory.init(sequelize),
   Product: Product.init(sequelize),
   ProductMedia: ProductMedia.init(sequelize),
+  Billing: Billing.init(sequelize),
   Order: Order.init(sequelize),
   OrderItem: OrderItem.init(sequelize),
   Escrow: Escrow.init(sequelize),
@@ -67,4 +69,4 @@ Object.values(models).forEach((model) => {
 
 // Export secara named untuk kebutuhan spesifik
 export { sequelize, Sequelize };
-export default models;
+export default db;

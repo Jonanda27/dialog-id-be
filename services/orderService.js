@@ -7,76 +7,62 @@ class OrderService {
      * Menggunakan Pessimistic Locking dan Transaksi ACID yang kebal manipulasi.
      */
     static async createOrder(buyerId, payload) {
-        const { items, address_id, store_id, courier_code, service_type, shipping_fee } = payload;
+    const { address_id, orders } = payload;
 
-        // 1. VALIDASI AWAL (DI LUAR TRANSAKSI)
-        const destinationAddress = await db.Address.findOne({ where: { id: address_id, user_id: buyerId } });
-        if (!destinationAddress) throw { statusCode: 404, message: 'Alamat pengiriman tidak ditemukan.' };
+    // 1. VALIDASI ALAMAT (DI LUAR TRANSAKSI)
+    const destinationAddress = await db.Address.findOne({ 
+        where: { id: address_id, user_id: buyerId } 
+    });
+    if (!destinationAddress) throw { statusCode: 404, message: 'Alamat pengiriman tidak ditemukan.' };
 
-        const store = await db.Store.findByPk(store_id, {
-            include: [{ model: db.Address, as: 'originAddress' }]
-        });
-        if (!store || !store.originAddress) throw { statusCode: 404, message: 'Data toko atau alamat asal tidak ditemukan.' };
+    const fullAddressString = `${destinationAddress.address_detail}, ${destinationAddress.district}, ${destinationAddress.city}, ${destinationAddress.province} ${destinationAddress.postal_code}`;
 
-        // Persiapkan data barang untuk re-validasi ongkir
-        const shippingItemsPayload = [];
-        for (const item of items) {
-            const product = await db.Product.findByPk(item.product_id);
-            if (!product) throw { statusCode: 404, message: `Produk ${item.product_id} tidak ada.` };
-            shippingItemsPayload.push({
-                name: product.name,
-                price: Number(product.price),
-                weight: product.product_weight || 500,
-                quantity: item.qty
-            });
-        }
+    // 2. MULAI TRANSAKSI
+    const t = await db.sequelize.transaction();
 
-        // 2. ⚡ SHIPPING RE-VALIDATION (DI LUAR TRANSAKSI)
-        let actualShippingFee = Number(shipping_fee);
+    try {
+        let totalGrandTotal = 0;
+        const createdOrders = [];
 
-        /* 
-        // BAGIAN INI SEMENTARA DIKOMENTAR AGAR TIDAK TIMEOUT / KENA MASALAH SALDO
-        try {
-            const availableRates = await shippingService.calculateRates(
-                store.originAddress.biteship_area_id,
-                destinationAddress.biteship_area_id,
-                shippingItemsPayload
-            );
-            const matchedRate = availableRates.find(r => r.courier_company === courier_code && r.service_type === service_type);
-            if (!matchedRate) throw new Error();
-            actualShippingFee = matchedRate.price;
-        } catch (e) {
-            console.log("Re-validation skipped or failed, using FE price.");
-        }
-        */
+        // --- TAHAP A: BUAT MASTER BILLING ---
+        const billing = await db.Billing.create({
+            buyer_id: buyerId,
+            total_amount: 0, 
+            status: 'unpaid'
+        }, { transaction: t });
 
-        // 3. MULAI TRANSAKSI DATABASE (HANYA UNTUK OPERASI DB)
-        const t = await db.sequelize.transaction();
+        // --- TAHAP B: LOOPING PER TOKO ---
+        for (const storeOrder of orders) {
+            const { store_id, courier_code, service_type, shipping_fee, items } = storeOrder;
 
-        try {
+            const store = await db.Store.findByPk(store_id, { transaction: t });
+            if (!store) throw { statusCode: 404, message: `Toko ${store_id} tidak ditemukan.` };
+
             let subtotal = 0;
-            let totalGradingFee = 0;
+            let storeGradingFee = 0;
             const orderItemsData = [];
 
+            // --- TAHAP C: LOOPING ITEM PER TOKO ---
             for (const item of items) {
                 const product = await db.Product.findOne({
                     where: { id: item.product_id, store_id: store.id },
-                    lock: t.LOCK.UPDATE,
+                    lock: t.LOCK.UPDATE, // Tetap gunakan lock untuk validasi yang akurat
                     transaction: t
                 });
 
-                if (product.stock < item.qty) throw { statusCode: 400, message: `Stok ${product.name} habis.` };
+                if (!product) throw { statusCode: 404, message: `Produk ${item.product_id} tidak ditemukan di toko ini.` };
+                
+                // VALIDASI STOK (Tetap ada agar tidak bisa checkout jika kosong)
+                if (product.stock < item.qty) throw { statusCode: 400, message: `Stok ${product.name} tidak mencukupi.` };
 
-                // Hitung Subtotal
-                const itemSubtotal = parseFloat(product.price) * item.qty;
-                subtotal += itemSubtotal;
+                subtotal += parseFloat(product.price) * item.qty;
 
-                // Cek Grading
+                // Validasi Grading Request
                 const gradingRequest = await db.GradingRequest.findOne({
                     where: { buyer_id: buyerId, product_id: product.id, status: 'fulfilled' },
                     transaction: t
                 });
-                if (gradingRequest) totalGradingFee += 25000;
+                if (gradingRequest) storeGradingFee += 25000;
 
                 orderItemsData.push({
                     product_id: product.id,
@@ -85,51 +71,58 @@ class OrderService {
                     grading_at_purchase: product.metadata?.grading || 'Raw'
                 });
 
-                // Update Stok
-                await product.update({ stock: product.stock - item.qty }, { transaction: t });
+                // PENGURANGAN STOK DIHAPUS DARI SINI
+                // Logika dipindah ke handleMidtransNotification
             }
 
-            const grandTotal = subtotal + actualShippingFee + totalGradingFee;
+            const storeGrandTotal = subtotal + Number(shipping_fee) + storeGradingFee;
+            totalGrandTotal += storeGrandTotal;
 
-            // Format alamat untuk disimpan di DB
-            const fullAddressString = `${destinationAddress.address_detail}, ${destinationAddress.district}, ${destinationAddress.city}, ${destinationAddress.province} ${destinationAddress.postal_code}`;
-
-            // 4. BUAT ORDER
+            // --- TAHAP D: BUAT PESANAN (ORDER) PER TOKO ---
             const order = await db.Order.create({
+                billing_id: billing.id,
                 buyer_id: buyerId,
                 store_id: store.id,
                 subtotal,
-                shipping_fee: actualShippingFee,
-                grading_fee: totalGradingFee,
-                grand_total: grandTotal,
+                shipping_fee,
+                grading_fee: storeGradingFee,
+                grand_total: storeGrandTotal,
                 status: 'pending_payment',
                 shipping_address: fullAddressString,
-                tracking_number: null,
-                payment_method: null,
-                // Pastikan kolom ini ada di model Order kamu:
-                // courier_company: courier_code,
-                // service_type: service_type
+                courier_company: courier_code,
+                service_type: service_type
             }, { transaction: t });
 
-            // 5. BUAT ORDER ITEMS
-            const itemsWithOrderId = orderItemsData.map(item => ({ ...item, order_id: order.id }));
+            // Simpan Item Pesanan
+            const itemsWithOrderId = orderItemsData.map(oi => ({ ...oi, order_id: order.id }));
             await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
 
-            // 6. BUAT ESCROW
+            // Simpan ke Escrow per Order
             await db.Escrow.create({
                 order_id: order.id,
-                amount_held: grandTotal,
+                amount_held: storeGrandTotal,
                 status: 'held'
             }, { transaction: t });
 
-            await t.commit();
-            return order;
-
-        } catch (error) {
-            await t.rollback();
-            throw error;
+            createdOrders.push(order);
         }
+
+        // --- TAHAP E: UPDATE TOTAL DI MASTER BILLING ---
+        await billing.update({ total_amount: totalGrandTotal }, { transaction: t });
+
+        await t.commit();
+
+        return {
+            billing_id: billing.id,
+            grand_total: totalGrandTotal,
+            orders: createdOrders
+        };
+
+    } catch (error) {
+        await t.rollback();
+        throw error;
     }
+}
 
     /**
      * Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)

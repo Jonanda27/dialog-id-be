@@ -50,35 +50,35 @@ export const calculateShipping = asyncHandler(async (req, res) => {
 export const checkout = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
 
-    // ⚡ TAHAP 4: Validasi Ketat Payload menggunakan Zod sebelum menyentuh Database
-    // Ini memastikan format array items dan snake_case sudah 100% benar
+    // Validasi payload (pastikan checkoutSchema sudah mendukung array orders)
     const validatedData = checkoutSchema.parse(req.body);
 
     try {
-        // Logika validasi total harga produk vs database & Biteship Re-Validation
-        // mutlak dilakukan di dalam OrderService.createOrder() untuk menjaga High Cohesion
-        const order = await OrderService.createOrder(buyerId, validatedData);
+        // Service sekarang mengembalikan objek Billing Master
+        const checkoutResult = await OrderService.createOrder(buyerId, validatedData);
 
         return successResponse(
             res,
             201,
-            'Checkout berhasil. Silakan lanjutkan ke pembayaran.',
-            { order_id: order.id, grand_total: order.grand_total }
+            'Checkout berhasil. Silakan selesaikan pembayaran.',
+            { 
+                billing_id: checkoutResult.billing_id, 
+                grand_total: checkoutResult.grand_total,
+                order_count: checkoutResult.orders.length
+            }
         );
     } catch (error) {
-        // ⚡ TAHAP 4: Tangkap error spesifik 409 Conflict dari Biteship Re-Validation
         if (error.statusCode === 409) {
             return res.status(409).json({
                 success: false,
                 message: error.message,
-                action: 'REFRESH_SHIPPING' // Flag khusus yang memicu Auto-Reset Kurir di Frontend
+                action: 'REFRESH_SHIPPING'
             });
         }
-
-        // Lempar kembali error selain 409 agar ditangkap oleh global errorHandler
         throw error;
     }
 });
+
 
 // Endpoint untuk mengambil detail pesanan spesifik (Dibutuhkan Frontend di halaman Pembayaran)
 export const getOrderById = asyncHandler(async (req, res) => {
