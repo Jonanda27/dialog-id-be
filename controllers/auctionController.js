@@ -2,18 +2,36 @@ import db from '../models/index.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
-const { Auction, Product, Store, ProductMedia, sequelize } = db;
+// PERBAIKAN: Menghapus Product dan ProductMedia, diganti Store dan AuctionMedia
+const { Auction, Store, AuctionMedia, sequelize } = db;
 
 /**
- * @desc    Membuat jadwal lelang baru untuk produk tertentu
+ * @desc    Membuat lelang baru (Decoupled dari Product)
  * @route   POST /api/v1/auctions
  * @access  Private (Seller only)
  */
 export const createAuction = asyncHandler(async (req, res) => {
-    const { product_id, start_time, end_time, increment, start_price } = req.body;
+    // Parsing text dari multipart/form-data
+    const {
+        item_name, description, condition,
+        weight, length, width, height,
+        start_time, end_time, increment, start_price
+    } = req.body;
+
     const sellerId = req.user.id;
 
-    // 1. Validasi input waktu
+    // 1. Dapatkan referensi Toko (Store ID)
+    const store = await Store.findOne({ where: { user_id: sellerId } });
+    if (!store) {
+        return errorResponse(res, 404, 'Toko tidak ditemukan.');
+    }
+
+    // 2. Validasi Foto
+    if (!req.files || req.files.length === 0) {
+        return errorResponse(res, 400, 'Minimal satu foto barang lelang harus diunggah.');
+    }
+
+    // 3. Validasi input waktu
     const start = new Date(start_time);
     const end = new Date(end_time);
     const now = new Date();
@@ -29,43 +47,40 @@ export const createAuction = asyncHandler(async (req, res) => {
         return errorResponse(res, 400, 'Durasi lelang harus minimal 1 jam dan maksimal 24 jam.');
     }
 
-    // 2. Validasi kepemilikan Produk dan Toko
-    const product = await Product.findByPk(product_id, {
-        include: [{ model: Store, as: 'store', attributes: ['user_id'] }]
-    });
-
-    if (!product) {
-        return errorResponse(res, 404, 'Produk tidak ditemukan.');
-    }
-
-    if (product.store.user_id !== sellerId) {
-        return errorResponse(res, 403, 'Akses ditolak. Anda bukan pemilik produk ini.');
-    }
-
-    // 3. Validasi status produk
-    if (product.is_locked) {
-        return errorResponse(res, 400, 'Produk ini sedang terkunci atau sudah memiliki sesi lelang aktif.');
-    }
-
     // 4. Eksekusi Atomic Transaction
     const transaction = await sequelize.transaction();
 
     try {
+        // 4A. Simpan Induk Lelang
         const auction = await Auction.create({
-            product_id,
+            store_id: store.id,
+            item_name,
+            description,
+            condition: condition || 'USED',
+            weight: parseInt(weight) || 0,
+            length: parseInt(length) || 0,
+            width: parseInt(width) || 0,
+            height: parseInt(height) || 0,
             start_time: start,
             end_time: end,
-            increment,
-            current_price: start_price || product.price,
+            increment: parseFloat(increment),
+            current_price: parseFloat(start_price),
             status: 'SCHEDULED'
         }, { transaction });
 
-        // Kunci produk
-        await product.update({ is_locked: true }, { transaction });
+        // 4B. Simpan Media Galeri Lelang
+        const mediaData = req.files.map((file, index) => ({
+            auction_id: auction.id,
+            // Sesuaikan properti file.filename dengan setup multer Anda
+            media_url: `/uploads/auctions/${file.filename || file.originalname}`,
+            is_primary: index === 0 // Gambar indeks 0 dijadikan thumbnail
+        }));
+
+        await AuctionMedia.bulkCreate(mediaData, { transaction });
 
         await transaction.commit();
 
-        return successResponse(res, 201, 'Jadwal lelang berhasil dibuat dan produk telah dikunci.', auction);
+        return successResponse(res, 201, 'Lelang baru berhasil didaftarkan ke dalam sistem.', auction);
     } catch (error) {
         await transaction.rollback();
         throw error;
@@ -85,18 +100,13 @@ export const getAuctionsByStore = asyncHandler(async (req, res) => {
         return errorResponse(res, 404, 'Toko tidak ditemukan.');
     }
 
-    // ⚡ FIX: Tambahkan include ProductMedia agar foto tampil di tabel Frontend
+    // PERBAIKAN: Langsung include AuctionMedia, tidak perlu lewat relasi produk lagi
     const auctions = await Auction.findAll({
+        where: { store_id: store.id },
         include: [{
-            model: Product,
-            as: 'product',
-            where: { store_id: store.id },
-            attributes: ['id', 'name', 'price', 'metadata', 'is_locked'],
-            include: [{
-                model: ProductMedia,
-                as: 'media',
-                attributes: ['media_url', 'is_primary']
-            }]
+            model: AuctionMedia,
+            as: 'media',
+            attributes: ['media_url', 'is_primary']
         }],
         order: [['start_time', 'DESC']]
     });
@@ -114,43 +124,23 @@ export const cancelAuction = asyncHandler(async (req, res) => {
     const sellerId = req.user.id;
 
     const auction = await Auction.findByPk(id, {
-        include: [{
-            model: Product,
-            as: 'product',
-            include: [{ model: Store, as: 'store' }]
-        }]
+        include: [{ model: Store, as: 'store' }]
     });
 
     if (!auction) {
         return errorResponse(res, 404, 'Data lelang tidak ditemukan.');
     }
 
-    if (auction.product.store.user_id !== sellerId) {
+    if (auction.store.user_id !== sellerId) {
         return errorResponse(res, 403, 'Akses ditolak.');
     }
 
-    // Hanya bisa batal kalau belum Live (Scheduled/Draft)
     if (auction.status !== 'SCHEDULED' && auction.status !== 'DRAFT') {
         return errorResponse(res, 400, 'Hanya lelang berstatus SCHEDULED yang dapat dibatalkan.');
     }
 
-    const transaction = await sequelize.transaction();
+    // PERBAIKAN: Tidak perlu transaction dan hapus logika gembok product.is_locked
+    await auction.update({ status: 'FAILED' });
 
-    try {
-        // Update status lelang ke FAILED atau CANCELLED
-        await auction.update({ status: 'FAILED' }, { transaction });
-
-        // Buka gembok produk
-        await Product.update(
-            { is_locked: false },
-            { where: { id: auction.product_id }, transaction }
-        );
-
-        await transaction.commit();
-
-        return successResponse(res, 200, 'Lelang berhasil dibatalkan. Produk kembali tersedia.');
-    } catch (error) {
-        await transaction.rollback();
-        throw error;
-    }
+    return successResponse(res, 200, 'Lelang berhasil dibatalkan secara permanen.');
 });

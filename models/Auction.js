@@ -9,9 +9,43 @@ export default class Auction extends Model {
                 primaryKey: true,
                 allowNull: false,
             },
-            product_id: {
+            // product_id DIHAPUS
+            store_id: {
                 type: DataTypes.UUID,
                 allowNull: false,
+            },
+            item_name: {
+                type: DataTypes.STRING,
+                allowNull: false,
+            },
+            description: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+            condition: {
+                type: DataTypes.ENUM('NEW', 'USED'),
+                allowNull: false,
+                defaultValue: 'USED',
+            },
+            weight: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+            },
+            length: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+            },
+            width: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+            },
+            height: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
             },
             winner_id: {
                 type: DataTypes.UUID,
@@ -52,7 +86,14 @@ export default class Auction extends Model {
     }
 
     static associate(models) {
-        this.belongsTo(models.Product, { foreignKey: 'product_id', as: 'product', onDelete: 'CASCADE' });
+        // Relasi ke Store (Induk Kepemilikan)
+        this.belongsTo(models.Store, { foreignKey: 'store_id', as: 'store', onDelete: 'CASCADE' });
+
+        // Relasi ke tabel media yang baru (Galeri Lelang)
+        if (models.AuctionMedia) {
+            this.hasMany(models.AuctionMedia, { foreignKey: 'auction_id', as: 'media', onDelete: 'CASCADE' });
+        }
+
         this.hasMany(models.AuctionBid, { foreignKey: 'auction_id', as: 'bids' });
         this.belongsTo(models.User, { foreignKey: 'winner_id', as: 'winner' });
     }

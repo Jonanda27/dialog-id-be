@@ -29,14 +29,7 @@ export default class Product extends Model {
                 defaultValue: 1,
                 allowNull: false,
             },
-            // --- MODUL LELANG (NEW) ---
-            is_locked: {
-                type: DataTypes.BOOLEAN,
-                defaultValue: false,
-                allowNull: false,
-                comment: 'Indikator untuk mengunci produk dari transaksi checkout reguler saat lelang sedang berlangsung',
-            },
-            // --- ATRIBUT FISIK & LOGISTIK (NEW) ---
+            // Kolom is_locked DIHAPUS SEPENUHNYA
             product_weight: {
                 type: DataTypes.INTEGER,
                 allowNull: false,
@@ -61,7 +54,6 @@ export default class Product extends Model {
                 defaultValue: 0,
                 comment: 'Tinggi dimensi produk dalam Cm',
             },
-            // --- GAME CHANGER: JSONB METADATA ---
             metadata: {
                 type: DataTypes.JSONB,
                 allowNull: false,
@@ -91,9 +83,6 @@ export default class Product extends Model {
             this.belongsTo(models.SubCategory, { foreignKey: 'sub_category_id', as: 'subCategory' });
         }
 
-        // Relasi Modul Lelang (Satu produk bisa memiliki satu lelang aktif/terjadwal)
-        if (models.Auction) {
-            this.hasOne(models.Auction, { foreignKey: 'product_id', as: 'auction' });
-        }
+        // Relasi Modul Lelang DIHAPUS SEPENUHNYA
     }
 }
