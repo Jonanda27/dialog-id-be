@@ -42,11 +42,11 @@ export default function initializeAuctionSocket(io) {
             console.log(`[SOCKET] User ${socket.user.id} bergabung ke room ${roomName}`);
 
             try {
-                // Skenario: User A masuk ke halaman ketika lelang sudah berjalan 5 menit.
-                // Kita harus langsung melakukan sinkronisasi harga terbaru dari Redis ke UI lokalnya.
                 const currentState = await AuctionRedisService.getAuctionState(auctionId);
 
-                // Emit khusus hanya kepada user yang baru bergabung
+                // ⚡ TAMBAHKAN BARIS INI: Cek wujud asli data dari Redis
+                console.log(`[SOCKET DEBUG] Payload untuk SYNC_AUCTION_STATE:`, JSON.stringify(currentState, null, 2));
+
                 socket.emit('SYNC_AUCTION_STATE', currentState);
             } catch (error) {
                 console.error(`[SOCKET] Gagal melakukan sinkronisasi awal untuk ${auctionId}:`, error);
@@ -82,6 +82,10 @@ export default function initializeAuctionSocket(io) {
                     });
                 }
             } catch (error) {
+                // ⚡ FIX: Tambahkan logging internal untuk visibilitas Server (Observability)
+                // Mencatat detail transaksi yang ditolak oleh LUA Script (Race Condition / Cooldown)
+                console.error(`[SOCKET ❌ BID_REJECTED] User: ${userId} | Auction: ${auctionId} | Expected: ${expectedPrice} | Reason: ${error.message}`);
+
                 // ERROR ISOLATION: Skenario Cooldown 5 detik atau Jebakan Harga (Race Condition).
                 // Kita TIDAK mem-broadcast error ini. Kita hanya melemparnya kembali ke user yang menekan tombol.
                 socket.emit('BID_ERROR', {
