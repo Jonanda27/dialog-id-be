@@ -19,6 +19,7 @@ import ReviewMedia from './ReviewMedia.js';
 import Billing from './Billing.js';
 import Auction from './Auction.js';
 import AuctionBid from './AuctionBid.js';
+import StoreSuspension from './StoreSuspension.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -50,6 +51,7 @@ const models = {
   ReviewMedia: ReviewMedia.init(sequelize),
   Auction: Auction.init(sequelize), 
   AuctionBid: AuctionBid.init(sequelize), 
+  StoreSuspension: StoreSuspension.init(sequelize),
 };
 
 

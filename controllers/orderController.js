@@ -6,7 +6,8 @@ import OrderService from '../services/orderService.js';
 import * as ShippingService from '../services/shippingService.js';
 import { checkoutSchema } from '../validations/orderValidation.js';
 
-const GRADING_FEE_AMOUNT = 15000; // Konstanta biaya grading per produk
+// Konstanta biaya grading per produk (Disesuaikan dengan requirement bisnis terbaru)
+const GRADING_FEE_AMOUNT = 25000;
 
 export const calculateShipping = asyncHandler(async (req, res) => {
     const { store_id, destination_postal_code, items } = req.body;
@@ -42,26 +43,43 @@ export const calculateShipping = asyncHandler(async (req, res) => {
 export const checkout = asyncHandler(async (req, res) => {
     const buyerId = req.user.id;
 
-    // Validasi payload
+    // 1. Validasi payload menggunakan Zod Schema
     const validatedData = checkoutSchema.parse(req.body);
 
-    // --- LOGIKA DOMAIN: INJEKSI BIAYA GRADING (SERVER-SIDE) ---
-    // (FIX) Iterasi ke dalam array orders terlebih dahulu
+    // 2. LOGIKA DOMAIN: INJEKSI BIAYA GRADING (SERVER-SIDE)
+    // Kita menelusuri array orders (multi-toko) lalu menelusuri setiap item di dalamnya.
     const processedOrders = await Promise.all(validatedData.orders.map(async (storeOrder) => {
-        // Kemudian iterasi items di dalam storeOrder tersebut
+
+        // Map item di dalam setiap toko
         const itemsWithGrading = await Promise.all(storeOrder.items.map(async (item) => {
+            /**
+             * Cari request grading terakhir untuk produk ini oleh pembeli ini.
+             * Status yang dicek:
+             * - MEDIA_READY: Video sudah diupload seller, tapi pembeli belum membayar fee grading.
+             * - COMPLETED: Pembeli sudah pernah membayar fee grading untuk produk ini sebelumnya.
+             */
             const activeGrading = await db.GradingRequest.findOne({
                 where: {
                     buyer_id: buyerId,
                     product_id: item.product_id,
-                    status: 'MEDIA_READY' // Hanya bebankan biaya jika video sudah siap ditonton
-                }
+                    status: ['MEDIA_READY', 'COMPLETED']
+                },
+                order: [['created_at', 'DESC']] // Ambil yang terbaru jika ada lebih dari satu tiket
             });
+
+            /**
+             * PENENTUAN BIAYA:
+             * - Jika status 'MEDIA_READY', maka ini pertama kalinya pembeli akan membayar fee tersebut.
+             * - Jika status 'COMPLETED', pembeli tidak dikenakan biaya lagi (Rp 0).
+             * - Jika tidak ada tiket (activeGrading null), maka fee otomatis 0.
+             */
+            const needsPayment = activeGrading && activeGrading.status === 'MEDIA_READY';
 
             return {
                 ...item,
-                apply_grading_fee: !!activeGrading,
-                grading_fee_value: activeGrading ? GRADING_FEE_AMOUNT : 0
+                // Berikan flag ke Service Layer apakah biaya ini perlu dimasukkan ke database
+                apply_grading_fee: !!needsPayment,
+                grading_fee_value: needsPayment ? GRADING_FEE_AMOUNT : 0
             };
         }));
 
@@ -72,23 +90,25 @@ export const checkout = asyncHandler(async (req, res) => {
         };
     }));
 
-    // Ganti orders asli dengan data yang sudah terinjeksi informasi biaya grading
+    // Ganti properti orders dengan data yang sudah dihitung ulang fee grading-nya
     validatedData.orders = processedOrders;
 
     try {
+        // 3. Eksekusi pembuatan pesanan di database melalui OrderService
         const checkoutResult = await OrderService.createOrder(buyerId, validatedData);
 
         return successResponse(
             res,
             201,
-            'Checkout berhasil. Biaya verifikasi otomatis terakumulasi jika tersedia. Silakan selesaikan pembayaran.',
+            'Checkout berhasil. Biaya verifikasi otomatis disesuaikan berdasarkan riwayat transaksi Anda.',
             {
                 billing_id: checkoutResult.billing_id,
                 grand_total: checkoutResult.grand_total,
-                order_count: checkoutResult.orders?.length || 1
+                order_count: checkoutResult.orders?.length || 0
             }
         );
     } catch (error) {
+        // Handle error khusus jika terjadi perubahan harga/stok saat proses (Race Condition)
         if (error.statusCode === 409) {
             return res.status(409).json({
                 success: false,

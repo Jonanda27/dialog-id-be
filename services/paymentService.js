@@ -10,14 +10,8 @@ const snap = new midtransClient.Snap({
 
 /**
  * Membuat Sesi Pembayaran Midtrans Snap
- * Menggunakan Billing ID sebagai reference agar satu pembayaran bisa berisi banyak Order (Split Order)
- */
-/**
- * Membuat Sesi Pembayaran Midtrans Snap
- * Strategi: Menyimpan dan menggunakan kembali snap_token selama status masih unpaid.
  */
 export const createMidtransSession = async (billingId) => {
-    // 1. Ambil data Billing lengkap dengan rincian Order dan Buyer
     const billing = await db.Billing.findByPk(billingId, {
         include: [
             { model: db.User, as: 'buyer', attributes: ['full_name', 'email'] },
@@ -37,31 +31,27 @@ export const createMidtransSession = async (billingId) => {
         throw { statusCode: 404, message: 'Data tagihan (billing) tidak ditemukan' };
     }
 
-    // ⚡ LOGIKA PENTING: Cek apakah sesi pembayaran sudah pernah dibuat sebelumnya
-    // Jika snap_token ada dan status masih unpaid, kita tidak perlu membuat transaksi baru ke Midtrans.
     if (billing.snap_token && billing.status === 'unpaid') {
-        console.log(`[Midtrans] Menggunakan kembali sesi aktif untuk Billing: ${billingId}`);
         return {
             token: billing.snap_token,
-            // URL redirect standard Midtrans berdasarkan token
             redirect_url: `https://app.sandbox.midtrans.com/snap/v2/vtweb/${billing.snap_token}`
         };
     }
 
-    // 2. Siapkan Item Details untuk Midtrans (Gabungan semua item dari semua order)
     const itemDetails = [];
     billing.orders.forEach(order => {
+        // 1. Masukkan Produk
         order.items.forEach(item => {
             itemDetails.push({
                 id: item.product_id,
                 price: Math.floor(parseFloat(item.price_at_purchase)),
                 quantity: item.qty,
-                name: item.product.name.substring(0, 50), // Batas karakter midtrans
+                name: item.product.name.substring(0, 50),
                 merchant_name: "AnalogID"
             });
         });
         
-        // Tambahkan Ongkir sebagai item terpisah
+        // 2. Masukkan Ongkir (Jika ada)
         if (parseFloat(order.shipping_fee) > 0) {
             itemDetails.push({
                 id: `SHIPPING-${order.id.substring(0, 8)}`,
@@ -70,12 +60,22 @@ export const createMidtransSession = async (billingId) => {
                 name: `Ongkir - Toko ${order.store_id.substring(0, 5)}`
             });
         }
+
+        // ⚡ 3. MASUKKAN GRADING FEE (Ini yang kurang!)
+        if (parseFloat(order.grading_fee) > 0) {
+            itemDetails.push({
+                id: `GRADING-${order.id.substring(0, 8)}`,
+                price: Math.floor(parseFloat(order.grading_fee)),
+                quantity: 1,
+                name: `Biaya Verifikasi Premium (Grading)`
+            });
+        }
     });
 
-    // 3. Payload Midtrans Snap
     const parameter = {
         transaction_details: {
-            order_id: billing.id, // ID Billing Master
+            order_id: billing.id,
+            // Pastikan gross_amount menggunakan total_amount dari billing yang sudah mencakup segalanya
             gross_amount: Math.floor(parseFloat(billing.total_amount))
         },
         item_details: itemDetails,
@@ -91,10 +91,7 @@ export const createMidtransSession = async (billingId) => {
     };
 
     try {
-        // Jika sampai di sini, berarti token belum ada atau perlu dibuat baru
         const transaction = await snap.createTransaction(parameter);
-        
-        // Simpan snap_token ke database Billing agar bisa digunakan kembali
         billing.snap_token = transaction.token;
         await billing.save();
 
@@ -103,12 +100,6 @@ export const createMidtransSession = async (billingId) => {
             redirect_url: transaction.redirect_url
         };
     } catch (error) {
-        // Penanganan error spesifik jika Order ID sudah terpakai di Midtrans namun tidak sinkron dengan DB kita
-        if (error.message.includes('400') || error.message.includes('already exists')) {
-             console.error("[Midtrans Conflict]: ID sudah ada, silakan cek status transaksi via API.");
-             // Opsional: Anda bisa melakukan sinkronisasi status di sini jika diperlukan
-        }
-
         console.error("[Midtrans Error]:", error);
         throw { statusCode: 500, message: "Gagal membuat sesi pembayaran Midtrans" };
     }
@@ -152,15 +143,28 @@ export const handleMidtransNotification = async (notificationData) => {
                 }
             );
 
-            // C. LOGIKA PENGURANGAN STOK
-            // Ambil semua order yang terkait dengan billing ini
+            // C. LOGIKA PENGURANGAN STOK DAN UPDATE GRADING REQUEST
             const orders = await db.Order.findAll({
                 where: { billing_id: billingId },
                 transaction: t
             });
 
+            const orderIds = orders.map(order => order.id);
+
+            // ⚡ PROSES UPDATE GRADING REQUEST MENJADI COMPLETED
+            // Tiket grading yang sudah diikat ke order_id ini sekarang dianggap lunas.
+            await db.GradingRequest.update(
+                { status: 'COMPLETED' },
+                { 
+                    where: { 
+                        order_id: orderIds,
+                        status: 'MEDIA_READY' // Pastikan hanya mengupdate yang sedang menunggu pembayaran
+                    }, 
+                    transaction: t 
+                }
+            );
+
             for (const order of orders) {
-                // Ambil semua item di setiap order
                 const items = await db.OrderItem.findAll({
                     where: { order_id: order.id },
                     transaction: t
@@ -177,7 +181,7 @@ export const handleMidtransNotification = async (notificationData) => {
             }
 
             await t.commit();
-            console.log(`Billing ${billingId} Berhasil Dilunasi dan Stok Telah Dikurangi`);
+            console.log(`Billing ${billingId} Berhasil Dilunasi, Stok Dikurangi, dan Status Grading Diperbarui`);
         } catch (error) {
             await t.rollback();
             console.error(`Gagal memproses pelunasan Billing ${billingId}:`, error);
@@ -186,8 +190,7 @@ export const handleMidtransNotification = async (notificationData) => {
     }
 };
 
-
-// Simulasi webhook tetap sama (seperti iPaymu) untuk keperluan testing internal
+// Simulasi webhook tetap sama untuk keperluan testing internal
 export const handleWebhookSimulation = async (orderId, paymentData) => {
     const { payment_method, payment_reference } = paymentData;
     const order = await db.Order.findByPk(orderId);
@@ -200,7 +203,7 @@ export const handleWebhookSimulation = async (orderId, paymentData) => {
     return order;
 };
 
-// Tambahkan fungsi ini di paymentService.js Anda
+// Mengambil detail billing
 export const getBillingDetail = async (billingId) => {
     const billing = await db.Billing.findByPk(billingId, {
         include: [
@@ -222,7 +225,6 @@ export const getBillingDetail = async (billingId) => {
         throw { statusCode: 404, message: 'Data billing tidak ditemukan' };
     }
 
-    // Format response agar sesuai dengan interface PaymentResult di FE
     return {
         billing,
         orders: billing.orders,
@@ -232,16 +234,16 @@ export const getBillingDetail = async (billingId) => {
     };
 };
 
-// ⚡ TAMBAHKAN INI: Fungsi Verifikasi ke API Midtrans
+/**
+ * Fungsi Verifikasi ke API Midtrans
+ */
 export const verifyBillingStatus = async (billingId) => {
     try {
-        // Ambil status langsung dari API Midtrans
         const statusResponse = await snap.transaction.status(billingId);
         
         // Gunakan fungsi notifikasi yang sudah ada untuk update DB jika statusnya sukses
         await handleMidtransNotification(statusResponse);
         
-        // Kembalikan detail terbaru
         return await getBillingDetail(billingId);
     } catch (error) {
         console.error("Midtrans Verify Error:", error);

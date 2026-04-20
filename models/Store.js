@@ -97,6 +97,10 @@ export default class Store extends Model {
             foreignKey: 'store_id', 
             as: 'walletTransactions' 
         });
+        this.hasMany(models.StoreSuspension, { 
+        foreignKey: 'store_id', 
+        as: 'suspensions' 
+    });
         this.hasMany(models.Review, { foreignKey: 'store_id', as: 'reviews' });
         this.belongsTo(models.Address, { 
             foreignKey: 'origin_address_id', 

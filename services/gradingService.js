@@ -115,6 +115,9 @@ class GradingService {
         return request;
     }
 
+    /**
+     * Buyer melihat daftar pengajuan grading miliknya
+     */
     static async getBuyerGradingRequests(buyerId) {
         return await db.GradingRequest.findAll({
             where: { buyer_id: buyerId },

@@ -17,7 +17,7 @@ export const authenticate = async (req, res, next) => {
         }
 
         if (!token) {
-            return errorResponse(res, 401, 'Akses ditolak. Token otorisasi tidak ditemukan.');
+            return errorResponse(res, 401, 'Akses ditolak. Token tidak ditemukan.');
         }
 
         // 3. Verifikasi Token

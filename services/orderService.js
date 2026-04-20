@@ -9,7 +9,12 @@ class OrderService {
     static async createOrder(buyerId, payload) {
         const { address_id, orders } = payload;
 
-        // 1. VALIDASI ALAMAT (DI LUAR TRANSAKSI)
+        // 1. Validasi awal payload
+        if (!orders || !Array.isArray(orders)) {
+            throw { statusCode: 400, message: "Payload orders harus berupa array." };
+        }
+
+        // VALIDASI ALAMAT (DI LUAR TRANSAKSI)
         const destinationAddress = await db.Address.findOne({
             where: { id: address_id, user_id: buyerId }
         });
@@ -17,7 +22,7 @@ class OrderService {
 
         const fullAddressString = `${destinationAddress.address_detail}, ${destinationAddress.district}, ${destinationAddress.city}, ${destinationAddress.province} ${destinationAddress.postal_code}`;
 
-        // 2. MULAI TRANSAKSI
+        // MULAI TRANSAKSI
         const t = await db.sequelize.transaction();
 
         try {
@@ -31,9 +36,13 @@ class OrderService {
                 status: 'unpaid'
             }, { transaction: t });
 
-            // --- TAHAP B: LOOPING PER TOKO ---
+            // --- TAHAP B: LOOPING PER TOKO (MULTI-STORE SPLIT) ---
             for (const storeOrder of orders) {
                 const { store_id, courier_code, service_type, shipping_fee, items } = storeOrder;
+
+                if (!items || !Array.isArray(items)) {
+                    throw { statusCode: 400, message: `Items tidak ditemukan untuk store ${store_id}` };
+                }
 
                 const store = await db.Store.findByPk(store_id, { transaction: t });
                 if (!store) throw { statusCode: 404, message: `Toko ${store_id} tidak ditemukan.` };
@@ -41,38 +50,45 @@ class OrderService {
                 let subtotal = 0;
                 let storeGradingFee = 0;
                 const orderItemsData = [];
+                const productsRequiringOrderIdUpdate = [];
 
                 // --- TAHAP C: LOOPING ITEM PER TOKO ---
                 for (const item of items) {
                     const product = await db.Product.findOne({
                         where: { id: item.product_id, store_id: store.id },
-                        lock: t.LOCK.UPDATE, // Tetap gunakan lock untuk validasi yang akurat
-                        transaction: t
+                        transaction: t,
+                        lock: t.LOCK.UPDATE // Pessimistic locking untuk validasi stok
                     });
 
                     if (!product) throw { statusCode: 404, message: `Produk ${item.product_id} tidak ditemukan di toko ini.` };
-
-                    // VALIDASI STOK (Tetap ada agar tidak bisa checkout jika kosong)
                     if (product.stock < item.qty) throw { statusCode: 400, message: `Stok ${product.name} tidak mencukupi.` };
 
                     subtotal += parseFloat(product.price) * item.qty;
 
                     // (FIX) LOGIKA GRADING:
                     // Gunakan nilai yang di-inject dari Controller. Mencegah Double Query & Hardcode Price.
+                    let itemGradingFee = 0;
                     if (item.apply_grading_fee) {
-                        storeGradingFee += item.grading_fee_value || 0;
+                        itemGradingFee = item.grading_fee_value || 0;
+                        storeGradingFee += itemGradingFee;
+                        // Tandai produk ini untuk dihubungkan ke order_id nanti
+                        productsRequiringOrderIdUpdate.push(product.id);
                     }
 
-                    
+                    const metadata = typeof product.metadata === 'string'
+                        ? JSON.parse(product.metadata || '{}')
+                        : (product.metadata || {});
+
                     orderItemsData.push({
                         product_id: product.id,
                         qty: item.qty,
                         price_at_purchase: product.price,
-                        grading_at_purchase: product.metadata?.grading || 'Raw'
+                        grading_at_purchase: metadata.grading || 'Raw',
+                        grading_fee: itemGradingFee // Disimpan di level OrderItem
                     });
 
                     // PENGURANGAN STOK DIHAPUS DARI SINI
-                    // Logika dipindah ke handleMidtransNotification
+                    // Logika pindah ke handleMidtransNotification agar stok berkurang SAAT dibayar
                 }
 
                 const storeGrandTotal = subtotal + Number(shipping_fee) + storeGradingFee;
@@ -93,7 +109,23 @@ class OrderService {
                     service_type: service_type
                 }, { transaction: t });
 
-                // Simpan Item Pesanan
+                // --- TAHAP E: UPDATE ORDER_ID PADA TIKET GRADING ---
+                // Ini krusial agar PaymentService bisa mengubah status tiket ke COMPLETED saat lunas
+                if (productsRequiringOrderIdUpdate.length > 0) {
+                    await db.GradingRequest.update(
+                        { order_id: order.id },
+                        {
+                            where: {
+                                buyer_id: buyerId,
+                                product_id: productsRequiringOrderIdUpdate,
+                                status: 'MEDIA_READY'
+                            },
+                            transaction: t
+                        }
+                    );
+                }
+
+                // Simpan detail item pesanan
                 const itemsWithOrderId = orderItemsData.map(oi => ({ ...oi, order_id: order.id }));
                 await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
 
@@ -107,7 +139,7 @@ class OrderService {
                 createdOrders.push(order);
             }
 
-            // --- TAHAP E: UPDATE TOTAL DI MASTER BILLING ---
+            // --- TAHAP F: UPDATE TOTAL AKHIR PADA BILLING ---
             await billing.update({ total_amount: totalGrandTotal }, { transaction: t });
 
             await t.commit();
@@ -119,7 +151,8 @@ class OrderService {
             };
 
         } catch (error) {
-            await t.rollback();
+            if (t) await t.rollback();
+            console.error("DETAILED ERROR BACKEND:", error);
             throw error;
         }
     }
@@ -235,7 +268,6 @@ class OrderService {
 
     /**
      * Menyelesaikan pesanan, merilis dana Escrow, dan mengupdate saldo dompet toko.
-     * Menggunakan Transaksi ACID.
      */
     static async completeOrder(orderId, buyerId) {
         const t = await db.sequelize.transaction();
@@ -287,7 +319,6 @@ class OrderService {
             store.balance = Number(store.balance) + netToSeller;
             await store.save({ transaction: t });
 
-            // Commit semua perubahan permanen
             await t.commit();
             return order;
 

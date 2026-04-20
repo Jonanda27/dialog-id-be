@@ -3,6 +3,7 @@ import { register, login, getMe, logout } from '../controllers/authController.js
 import { validateRequest, registerSchema, loginSchema } from '../validations/authValidation.js';
 import { resolveAdminDispute } from '../controllers/disputeController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
+import { checkAndRestoreSuspension } from '../middlewares/store.js';
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.post('/login', validateRequest(loginSchema), login);
  *       404:
  *         description: Data user tidak ditemukan di database (Not Found)
  */
-router.get('/me', authenticate, getMe);
+router.get('/me', authenticate, checkAndRestoreSuspension, getMe);
 
 /**
  * @swagger
