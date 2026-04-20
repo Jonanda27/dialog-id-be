@@ -2,31 +2,11 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-// Tentukan direktori penyimpanan
-const uploadDir = 'public/uploads/kyc';
-
 const ensureDir = (dir) => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
 };
-
-// Buat folder secara otomatis jika belum ada (Sync)
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Konfigurasi Storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        // Penamaan file: fieldname-timestamp-random.ext
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
 
 // File Filter (Hanya Gambar)
 const fileFilter = (req, file, cb) => {
@@ -37,15 +17,25 @@ const fileFilter = (req, file, cb) => {
     if (extname && mimetype) {
         return cb(null, true);
     } else {
-        // Error ini akan diteruskan ke Global Error Handler
         cb(new Error('Hanya file gambar (JPG, JPEG, PNG) yang diperbolehkan!'));
     }
 };
 
-// Ekspor middleware multer yang siap pakai
+// ==========================================
+// KONFIGURASI UPLOAD KYC
+// ==========================================
+const uploadDir = 'public/uploads/kyc';
+ensureDir(uploadDir);
+
 export const uploadKYC = multer({
-    storage: storage,
-    limits: { fileSize: 2 * 1024 * 1024 }, // Maksimal 2MB
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, uploadDir),
+        filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+            cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+        }
+    }),
+    limits: { fileSize: 2 * 1024 * 1024 },
     fileFilter: fileFilter
 });
 
@@ -53,52 +43,57 @@ export const uploadKYC = multer({
 // KONFIGURASI UPLOAD FOTO PRODUK
 // ==========================================
 const productDir = 'public/uploads/products';
+ensureDir(productDir);
 
-if (!fs.existsSync(productDir)) {
-    fs.mkdirSync(productDir, { recursive: true });
-}
-
-const productStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, productDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, 'product-' + uniqueSuffix + path.extname(file.originalname));
-    }
+export const uploadProductPhotos = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, productDir),
+        filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+            cb(null, 'product-' + uniqueSuffix + path.extname(file.originalname));
+        }
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: fileFilter
 });
 
-// Middleware multer untuk produk (maksimal 5 foto, 5MB per foto)
-export const uploadProductPhotos = multer({
-    storage: productStorage,
+// ==========================================
+// KONFIGURASI UPLOAD FOTO LELANG (NEW)
+// ==========================================
+const auctionDir = 'public/uploads/auctions';
+ensureDir(auctionDir);
+
+export const uploadAuctionPhotos = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, auctionDir),
+        filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+            cb(null, 'auction-' + uniqueSuffix + path.extname(file.originalname));
+        }
+    }),
     limits: { fileSize: 5 * 1024 * 1024 },
-    fileFilter: fileFilter // Menggunakan fileFilter gambar yang sama dengan KYC
+    fileFilter: fileFilter
 });
 
 // ==========================================
 // KONFIGURASI UPLOAD BANNER & LOGO TOKO
 // ==========================================
-const storeStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Logika pemisahan folder berdasarkan fieldname
-        let dest = 'public/uploads';
-        if (file.fieldname === 'banner_file') dest = 'public/uploads/banner';
-        if (file.fieldname === 'logo_file') dest = 'public/uploads/logo';
-
-        ensureDir(dest);
-        cb(null, dest);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        // Prefix nama file sesuai jenis filenya
-        const prefix = file.fieldname === 'banner_file' ? 'banner' : 'logo';
-        cb(null, prefix + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
 export const uploadStoreMedia = multer({
-    storage: storeStorage,
-    limits: { fileSize: 3 * 1024 * 1024 }, // Maksimal 3MB untuk banner/logo
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => {
+            let dest = 'public/uploads';
+            if (file.fieldname === 'banner_file') dest = 'public/uploads/banner';
+            if (file.fieldname === 'logo_file') dest = 'public/uploads/logo';
+            ensureDir(dest);
+            cb(null, dest);
+        },
+        filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+            const prefix = file.fieldname === 'banner_file' ? 'banner' : 'logo';
+            cb(null, prefix + '-' + uniqueSuffix + path.extname(file.originalname));
+        }
+    }),
+    limits: { fileSize: 3 * 1024 * 1024 },
     fileFilter: fileFilter
 });
 

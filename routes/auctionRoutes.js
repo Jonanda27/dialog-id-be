@@ -5,7 +5,7 @@ import {
     cancelAuction
 } from '../controllers/auctionController.js';
 import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
-import upload from '../middlewares/upload.js';
+import {uploadAuctionPhotos} from '../middlewares/upload.js';
 
 const router = express.Router();
 
@@ -96,7 +96,7 @@ router.get('/my-store', getAuctionsByStore);
  *       403:
  *         description: Akses ditolak, toko belum diverifikasi (Forbidden)
  */
-router.post('/', upload.array('photos', 5), createAuction);
+router.post('/', uploadAuctionPhotos.array('photos', 5), createAuction);
 
 /**
  * @swagger
