@@ -6,123 +6,164 @@ class OrderService {
      * Membuat pesanan baru dengan validasi stok, toko tunggal, dan penanganan biaya.
      * Menggunakan Pessimistic Locking dan Transaksi ACID yang kebal manipulasi.
      */
-    static async createOrder(buyerId, payload) {
-    const { address_id, orders } = payload;
+   static async createOrder(buyerId, payload) {
+        const { address_id, orders } = payload;
 
-    // 1. VALIDASI ALAMAT (DI LUAR TRANSAKSI)
-    const destinationAddress = await db.Address.findOne({ 
-        where: { id: address_id, user_id: buyerId } 
-    });
-    if (!destinationAddress) throw { statusCode: 404, message: 'Alamat pengiriman tidak ditemukan.' };
-
-    const fullAddressString = `${destinationAddress.address_detail}, ${destinationAddress.district}, ${destinationAddress.city}, ${destinationAddress.province} ${destinationAddress.postal_code}`;
-
-    // 2. MULAI TRANSAKSI
-    const t = await db.sequelize.transaction();
-
-    try {
-        let totalGrandTotal = 0;
-        const createdOrders = [];
-
-        // --- TAHAP A: BUAT MASTER BILLING ---
-        const billing = await db.Billing.create({
-            buyer_id: buyerId,
-            total_amount: 0, 
-            status: 'unpaid'
-        }, { transaction: t });
-
-        // --- TAHAP B: LOOPING PER TOKO ---
-        for (const storeOrder of orders) {
-            const { store_id, courier_code, service_type, shipping_fee, items } = storeOrder;
-
-            const store = await db.Store.findByPk(store_id, { transaction: t });
-            if (!store) throw { statusCode: 404, message: `Toko ${store_id} tidak ditemukan.` };
-
-            let subtotal = 0;
-            let storeGradingFee = 0;
-            const orderItemsData = [];
-
-            // --- TAHAP C: LOOPING ITEM PER TOKO ---
-            for (const item of items) {
-                const product = await db.Product.findOne({
-                    where: { id: item.product_id, store_id: store.id },
-                    lock: t.LOCK.UPDATE, // Tetap gunakan lock untuk validasi yang akurat
-                    transaction: t
-                });
-
-                if (!product) throw { statusCode: 404, message: `Produk ${item.product_id} tidak ditemukan di toko ini.` };
-                
-                // VALIDASI STOK (Tetap ada agar tidak bisa checkout jika kosong)
-                if (product.stock < item.qty) throw { statusCode: 400, message: `Stok ${product.name} tidak mencukupi.` };
-
-                subtotal += parseFloat(product.price) * item.qty;
-
-                // Validasi Grading Request
-                const gradingRequest = await db.GradingRequest.findOne({
-                    where: { buyer_id: buyerId, product_id: product.id, status: 'fulfilled' },
-                    transaction: t
-                });
-                if (gradingRequest) storeGradingFee += 25000;
-
-                orderItemsData.push({
-                    product_id: product.id,
-                    qty: item.qty,
-                    price_at_purchase: product.price,
-                    grading_at_purchase: product.metadata?.grading || 'Raw'
-                });
-
-                // PENGURANGAN STOK DIHAPUS DARI SINI
-                // Logika dipindah ke handleMidtransNotification
-            }
-
-            const storeGrandTotal = subtotal + Number(shipping_fee) + storeGradingFee;
-            totalGrandTotal += storeGrandTotal;
-
-            // --- TAHAP D: BUAT PESANAN (ORDER) PER TOKO ---
-            const order = await db.Order.create({
-                billing_id: billing.id,
-                buyer_id: buyerId,
-                store_id: store.id,
-                subtotal,
-                shipping_fee,
-                grading_fee: storeGradingFee,
-                grand_total: storeGrandTotal,
-                status: 'pending_payment',
-                shipping_address: fullAddressString,
-                courier_company: courier_code,
-                service_type: service_type
-            }, { transaction: t });
-
-            // Simpan Item Pesanan
-            const itemsWithOrderId = orderItemsData.map(oi => ({ ...oi, order_id: order.id }));
-            await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
-
-            // Simpan ke Escrow per Order
-            await db.Escrow.create({
-                order_id: order.id,
-                amount_held: storeGrandTotal,
-                status: 'held'
-            }, { transaction: t });
-
-            createdOrders.push(order);
+        // 1. Validasi awal payload
+        if (!orders || !Array.isArray(orders)) {
+            throw { statusCode: 400, message: "Payload orders harus berupa array." };
         }
 
-        // --- TAHAP E: UPDATE TOTAL DI MASTER BILLING ---
-        await billing.update({ total_amount: totalGrandTotal }, { transaction: t });
+        const destinationAddress = await db.Address.findOne({ 
+            where: { id: address_id, user_id: buyerId } 
+        });
+        if (!destinationAddress) throw { statusCode: 404, message: 'Alamat pengiriman tidak ditemukan.' };
 
-        await t.commit();
+        const fullAddressString = `${destinationAddress.address_detail}, ${destinationAddress.district}, ${destinationAddress.city}, ${destinationAddress.province} ${destinationAddress.postal_code}`;
 
-        return {
-            billing_id: billing.id,
-            grand_total: totalGrandTotal,
-            orders: createdOrders
-        };
+        const t = await db.sequelize.transaction();
 
-    } catch (error) {
-        await t.rollback();
-        throw error;
+        try {
+            let totalGrandTotal = 0;
+            const createdOrders = [];
+
+            // --- TAHAP A: BUAT MASTER BILLING ---
+            const billing = await db.Billing.create({
+                buyer_id: buyerId,
+                total_amount: 0, 
+                status: 'unpaid'
+            }, { transaction: t });
+
+            // --- TAHAP B: LOOPING PER TOKO (MULTI-STORE SPLIT) ---
+            for (const storeOrder of orders) {
+                const { store_id, courier_code, service_type, shipping_fee, items } = storeOrder;
+
+                if (!items || !Array.isArray(items)) {
+                    throw { statusCode: 400, message: `Items tidak ditemukan untuk store ${store_id}` };
+                }
+
+                const store = await db.Store.findByPk(store_id, { transaction: t });
+                if (!store) throw { statusCode: 404, message: `Toko ${store_id} tidak ditemukan.` };
+
+                let subtotal = 0;
+                let storeGradingFee = 0;
+                const orderItemsData = [];
+                const productsRequiringOrderIdUpdate = [];
+
+                // --- TAHAP C: LOOPING ITEM PER TOKO ---
+                for (const item of items) {
+                    const product = await db.Product.findOne({
+                        where: { id: item.product_id, store_id: store.id },
+                        transaction: t,
+                        lock: t.LOCK.UPDATE // Pessimistic locking untuk validasi stok
+                    });
+
+                    if (!product) throw { statusCode: 404, message: `Produk ${item.product_id} tidak ditemukan.` };
+                    if (product.stock < item.qty) throw { statusCode: 400, message: `Stok ${product.name} habis.` };
+
+                    subtotal += parseFloat(product.price) * item.qty;
+
+                    /**
+                     * ⚡ LOGIKA BIAYA GRADING:
+                     * Sistem mencari tiket grading milik buyer untuk produk ini.
+                     * Hanya kenakan biaya jika statusnya 'MEDIA_READY' (siap dibayar pertama kali).
+                     * Jika tiket berstatus 'COMPLETED', maka itemGradingFee tetap 0.
+                     */
+                    const gradingRequest = await db.GradingRequest.findOne({
+                        where: { 
+                            buyer_id: buyerId, 
+                            product_id: product.id, 
+                            status: 'MEDIA_READY' 
+                        },
+                        transaction: t
+                    });
+
+                    let itemGradingFee = 0;
+                    if (gradingRequest) {
+                        itemGradingFee = 25000;
+                        storeGradingFee += itemGradingFee;
+                        // Tandai produk ini untuk dihubungkan ke order_id nanti
+                        productsRequiringOrderIdUpdate.push(product.id);
+                    }
+
+                    const metadata = typeof product.metadata === 'string' 
+                        ? JSON.parse(product.metadata || '{}') 
+                        : (product.metadata || {});
+
+                    orderItemsData.push({
+                        product_id: product.id,
+                        qty: item.qty,
+                        price_at_purchase: product.price,
+                        grading_at_purchase: metadata.grading || 'Raw',
+                        grading_fee: itemGradingFee // Disimpan di level OrderItem
+                    });
+                }
+
+                const storeGrandTotal = subtotal + Number(shipping_fee) + storeGradingFee;
+                totalGrandTotal += storeGrandTotal;
+
+                // --- TAHAP D: BUAT PESANAN (ORDER) PER TOKO ---
+                const order = await db.Order.create({
+                    billing_id: billing.id,
+                    buyer_id: buyerId,
+                    store_id: store.id,
+                    subtotal,
+                    shipping_fee,
+                    grading_fee: storeGradingFee,
+                    grand_total: storeGrandTotal,
+                    status: 'pending_payment',
+                    shipping_address: fullAddressString,
+                    courier_company: courier_code,
+                    service_type: service_type
+                }, { transaction: t });
+
+                // --- TAHAP E: UPDATE ORDER_ID PADA TIKET GRADING ---
+                // Ini krusial agar PaymentService bisa mengubah status tiket ke COMPLETED saat lunas
+                if (productsRequiringOrderIdUpdate.length > 0) {
+                    await db.GradingRequest.update(
+                        { order_id: order.id },
+                        { 
+                            where: { 
+                                buyer_id: buyerId, 
+                                product_id: productsRequiringOrderIdUpdate,
+                                status: 'MEDIA_READY'
+                            },
+                            transaction: t 
+                        }
+                    );
+                }
+
+                // Simpan detail item pesanan
+                const itemsWithOrderId = orderItemsData.map(oi => ({ ...oi, order_id: order.id }));
+                await db.OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
+
+                // Catat ke Escrow
+                await db.Escrow.create({
+                    order_id: order.id,
+                    amount_held: storeGrandTotal,
+                    status: 'held'
+                }, { transaction: t });
+
+                createdOrders.push(order);
+            }
+
+            // --- TAHAP F: UPDATE TOTAL AKHIR PADA BILLING ---
+            await billing.update({ total_amount: totalGrandTotal }, { transaction: t });
+
+            await t.commit();
+
+            return {
+                billing_id: billing.id,
+                grand_total: totalGrandTotal,
+                orders: createdOrders
+            };
+
+        } catch (error) {
+            if (t) await t.rollback();
+            console.error("DETAILED ERROR BACKEND:", error);
+            throw error;
+        }
     }
-}
 
     /**
      * Mengambil detail spesifik pesanan (Digunakan oleh halaman Pembayaran)

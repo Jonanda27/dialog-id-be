@@ -6,6 +6,7 @@ export default class GradingRequest extends Model {
             id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
             buyer_id: { type: DataTypes.UUID, allowNull: false },
             product_id: { type: DataTypes.UUID, allowNull: false },
+            order_id: { type: DataTypes.UUID, allowNull: true },
 
             // --- PEMBARUAN STATE MACHINE GRADING ---
             status: {
@@ -29,5 +30,6 @@ export default class GradingRequest extends Model {
     static associate(models) {
         this.belongsTo(models.User, { foreignKey: 'buyer_id', as: 'buyer' });
         this.belongsTo(models.Product, { foreignKey: 'product_id', as: 'product' });
+        this.belongsTo(models.Order, { foreignKey: 'order_id', as: 'order' });
     }
 }

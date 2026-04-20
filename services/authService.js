@@ -94,19 +94,28 @@ export const loginUser = async (credentials) => {
     };
 };
 
+// dialog-id-be/services/authService.js
+
 export const getUserProfile = async (userId) => {
-    // Skema GetMe dipertahankan identik dengan hasil Login
     const user = await db.User.findByPk(userId, {
-        attributes: { exclude: ['password', 'password_hash'] },
+        attributes: { exclude: ['password'] },
         include: [
             {
                 model: db.Store,
                 as: 'store',
-                attributes: ['id', 'name', 'status', 'balance']
+                attributes: ['id', 'name', 'status', 'balance'],
+                include: [
+                    {
+                        model: db.StoreSuspension,
+                        as: 'suspensions',
+                        where: { is_active: true }, // Ambil hanya yang sedang aktif
+                        required: false // Toko tidak suspend tetap muncul
+                    }
+                ]
             }
         ]
     });
-
+    
     if (!user) {
         const error = new Error('User tidak ditemukan.');
         error.statusCode = 404;

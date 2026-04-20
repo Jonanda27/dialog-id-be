@@ -17,6 +17,7 @@ import AddressInit from './Address.js';
 import Review from './Review.js';
 import ReviewMedia from './ReviewMedia.js';
 import Billing from './Billing.js';
+import StoreSuspension from './StoreSuspension.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -46,6 +47,7 @@ const models = {
   Address: AddressInit(sequelize),
   Review: Review.init(sequelize),
   ReviewMedia: ReviewMedia.init(sequelize),
+  StoreSuspension: StoreSuspension.init(sequelize),
 };
 
 

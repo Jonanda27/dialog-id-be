@@ -20,3 +20,28 @@ export const updateStoreStatus = asyncHandler(async (req, res) => {
         result
     );
 });
+
+// Fitur Baru: Suspend dengan durasi atau permanen
+export const suspendStore = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { duration, unit, reason } = req.body; 
+    // duration: angka (misal: 5, 24)
+    // unit: 'hours' | 'days' | 'permanent'
+    
+    const result = await adminService.suspendStore(id, duration, unit, reason);
+
+    return successResponse(
+        res,
+        200,
+        unit === 'permanent' 
+            ? 'Toko berhasil disuspensi selamanya' 
+            : `Toko berhasil disuspensi selama ${duration} ${unit}`,
+        result
+    );
+});
+
+export const unsuspendStore = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const result = await adminService.unsuspendStore(id);
+    return successResponse(res, 200, 'Suspensi toko telah dicabut', result);
+});

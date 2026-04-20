@@ -106,13 +106,14 @@ export const getWallet = asyncHandler(async (req, res) => {
  * @access  Public
  */
 export const getAllStores = asyncHandler(async (req, res) => {
-    // Kita bisa menambahkan fitur filter status (hanya toko yang sudah diverifikasi)
-    // atau filter pencarian berdasarkan nama melalui query params
+    // Menghapus default 'approved' agar jika req.query.status kosong, 
+    // semua status akan diambil dari database.
     const filters = {
-        status: req.query.status || 'approved', // Default hanya tampilkan toko yang sudah aktif
+        status: req.query.status || undefined, // Menggunakan undefined agar parameter status diabaikan jika kosong
         search: req.query.search || ''
     };
 
+    // StoreService.findAllStores akan memproses 'status' hanya jika ia memiliki nilai 
     const stores = await StoreService.findAllStores(filters);
 
     return successResponse(

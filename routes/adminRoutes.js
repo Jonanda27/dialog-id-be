@@ -1,5 +1,5 @@
 import express from 'express';
-import { getPendingStores, updateStoreStatus } from '../controllers/adminController.js';
+import { getPendingStores, updateStoreStatus, suspendStore, unsuspendStore } from '../controllers/adminController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -63,5 +63,44 @@ router.get('/stores/pending', getPendingStores);
  *         description: Toko tidak ditemukan
  */
 router.patch('/stores/:id/status', updateStoreStatus);
+
+/**
+ * @swagger
+ * /api/admin/stores/{id}/suspend:
+ * post:
+ * summary: Suspend toko dengan durasi tertentu atau selamanya
+ * tags: [Admin]
+ * parameters:
+ * - in: path
+ * name: id
+ * required: true
+ * schema:
+ * type: string
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * properties:
+ * duration:
+ * type: integer
+ * description: Angka durasi (abaikan jika unit permanent)
+ * unit:
+ * type: string
+ * enum: [hours, days, permanent]
+ * reason:
+ * type: string
+ */
+router.post('/stores/:id/suspend', suspendStore);
+
+/**
+ * @swagger
+ * /api/admin/stores/{id}/unsuspend:
+ * post:
+ * summary: Mengaktifkan kembali toko yang disuspensi
+ * tags: [Admin]
+ */
+router.post('/stores/:id/unsuspend', unsuspendStore);
 
 export default router;
