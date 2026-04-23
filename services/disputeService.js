@@ -15,11 +15,11 @@ export const openDispute = async (orderId, buyerId, reason, files) => {
             throw { statusCode: 400, message: 'Dispute hanya bisa diajukan untuk pesanan yang sudah dikirim.' };
         }
 
-        // 2. Ubah Status Order menjadi 'disputed' [cite: 1169]
+        // 2. Ubah Status Order menjadi 'disputed'
         order.status = 'disputed';
         await order.save({ transaction: t });
 
-        // 3. Bekukan Dana Escrow (Ubah status dari 'held' menjadi 'frozen') [cite: 1170, 1172]
+        // 3. Bekukan Dana Escrow (Ubah status dari 'held' menjadi 'frozen')
         const escrow = await db.Escrow.findOne({ where: { order_id: orderId }, transaction: t, lock: t.LOCK.UPDATE });
         if (!escrow || escrow.status !== 'held') {
             throw { statusCode: 400, message: 'Dana Escrow tidak valid atau sudah cair.' };
@@ -27,7 +27,7 @@ export const openDispute = async (orderId, buyerId, reason, files) => {
         escrow.status = 'frozen';
         await escrow.save({ transaction: t });
 
-        // 4. Buat Record Dispute [cite: 1173]
+        // 4. Buat Record Dispute (Status default: 'open')
         const dispute = await db.Dispute.create({
             order_id: orderId,
             buyer_id: buyerId,
@@ -36,16 +36,14 @@ export const openDispute = async (orderId, buyerId, reason, files) => {
             status: 'open'
         }, { transaction: t });
 
-        // 5. Simpan Media Bukti (Cloudinary Integration) [cite: 1174]
+        // 5. Simpan Media Bukti (Cloudinary Integration)
         if (files && files.length > 0) {
             const mediaData = files.map(file => ({
                 dispute_id: dispute.id,
                 uploader_id: buyerId,
-                // Menggunakan path dari Cloudinary yang disediakan oleh multer-storage-cloudinary [cite: 840]
-                media_url: file.path 
+                media_url: file.path
             }));
 
-            // Menyimpan daftar URL bukti ke tabel dispute_media [cite: 667, 1175]
             await db.DisputeMedia.bulkCreate(mediaData, { transaction: t });
         }
 
@@ -53,7 +51,6 @@ export const openDispute = async (orderId, buyerId, reason, files) => {
         await t.commit();
         return dispute;
     } catch (error) {
-        // Batalkan semua perubahan jika terjadi error
         if (t) await t.rollback();
         const err = new Error(error.message || 'Gagal membuka dispute.');
         err.statusCode = error.statusCode || 500;
@@ -62,7 +59,7 @@ export const openDispute = async (orderId, buyerId, reason, files) => {
 };
 
 /**
- * Resolusi sengketa oleh Admin
+ * Resolusi sengketa oleh Admin atau Sistem (Worker)
  * @param {string} disputeId 
  * @param {string} resolutionType - 'refund_full', 'reject_buyer', 'refund_partial'
  * @param {string} adminNotes 
@@ -74,10 +71,11 @@ export const resolveDispute = async (disputeId, resolutionType, adminNotes, refu
         // 1. Ambil ID terkait terlebih dahulu tanpa LOCK
         const initialDispute = await db.Dispute.findByPk(disputeId);
         if (!initialDispute) throw { statusCode: 404, message: 'Dispute tidak ditemukan.' };
-        if (initialDispute.status === 'resolved') throw { statusCode: 400, message: 'Dispute ini sudah diselesaikan.' };
+        if (initialDispute.status === 'resolved' || initialDispute.status === 'refund_failed') {
+            throw { statusCode: 400, message: 'Dispute ini sudah berstatus final.' };
+        }
 
-        // 2. Lakukan Pessimistic Lock secara terpisah pada tabel utama (DIPERBAIKI)
-        // Kita kunci satu per satu tanpa include yang kompleks untuk menghindari error Outer Join
+        // 2. Lakukan Pessimistic Lock secara terpisah pada tabel utama
         const dispute = await db.Dispute.findByPk(disputeId, { transaction: t, lock: t.LOCK.UPDATE });
         const order = await db.Order.findByPk(dispute.order_id, { transaction: t, lock: t.LOCK.UPDATE });
         const escrow = await db.Escrow.findOne({
@@ -86,7 +84,7 @@ export const resolveDispute = async (disputeId, resolutionType, adminNotes, refu
             lock: t.LOCK.UPDATE
         });
 
-        // 3. Ambil data pendukung (items) secara terpisah (tidak perlu lock karena order sudah dikunci)
+        // 3. Ambil data pendukung (items)
         const orderItems = await db.OrderItem.findAll({
             where: { order_id: order.id },
             transaction: t
@@ -109,7 +107,17 @@ export const resolveDispute = async (disputeId, resolutionType, adminNotes, refu
             order.status = 'cancelled';
             escrow.status = 'refunded';
 
-            // Kembalikan Stok secara atomik menggunakan orderItems yang sudah diambil
+            // ⚡ PERBAIKAN FATAL: Buat antrean pencairan dana untuk Pembeli
+            await db.RefundPayout.create({
+                dispute_id: dispute.id,
+                order_id: order.id,
+                buyer_id: dispute.buyer_id,
+                amount: grandTotal, // Kembalikan 100% uang pembeli
+                status: 'pending',
+                payout_method: 'SYSTEM_WALLET' // Bisa disesuaikan dengan alur platform Anda
+            }, { transaction: t });
+
+            // Kembalikan Stok secara atomik
             for (const item of orderItems) {
                 const product = await db.Product.findByPk(item.product_id, { transaction: t, lock: t.LOCK.UPDATE });
                 if (product) {
@@ -141,7 +149,7 @@ export const resolveDispute = async (disputeId, resolutionType, adminNotes, refu
             await store.save({ transaction: t });
         }
         // ==========================================
-        // SKENARIO C: REFUND PARSIAL
+        // SKENARIO C: REFUND PARSIAL (Win-Win Solution)
         // ==========================================
         else if (resolutionType === 'refund_partial') {
             if (refundAmount <= 0 || refundAmount >= grandTotal) {
@@ -151,6 +159,7 @@ export const resolveDispute = async (disputeId, resolutionType, adminNotes, refu
             order.status = 'completed';
             escrow.status = 'released';
 
+            // 1. Hitung dan berikan sisa dana ke Seller
             const remainingForSeller = grandTotal - refundAmount;
             const adminFee = remainingForSeller * 0.03;
             const netToSeller = remainingForSeller - adminFee;
@@ -166,6 +175,16 @@ export const resolveDispute = async (disputeId, resolutionType, adminNotes, refu
             const store = await db.Store.findByPk(order.store_id, { transaction: t, lock: t.LOCK.UPDATE });
             store.balance = Number(store.balance) + netToSeller;
             await store.save({ transaction: t });
+
+            // 2. ⚡ PERBAIKAN FATAL: Buat antrean pencairan dana parsial untuk Pembeli
+            await db.RefundPayout.create({
+                dispute_id: dispute.id,
+                order_id: order.id,
+                buyer_id: dispute.buyer_id,
+                amount: refundAmount,
+                status: 'pending',
+                payout_method: 'SYSTEM_WALLET'
+            }, { transaction: t });
         } else {
             throw { statusCode: 400, message: 'Tipe resolusi tidak dikenali.' };
         }
@@ -185,37 +204,29 @@ export const resolveDispute = async (disputeId, resolutionType, adminNotes, refu
 };
 
 export const getMyDisputes = async (userId, role) => {
-    // 1. Tentukan kondisi filter berdasarkan peran (Seller/Buyer) [cite: 1211, 1212]
-    const whereCondition = role === 'seller' 
+    const whereCondition = role === 'seller'
         ? { store_id: (await db.Store.findOne({ where: { user_id: userId } }))?.id }
         : { buyer_id: userId };
 
     return await db.Dispute.findAll({
         where: whereCondition,
-        // 2. Tambahkan kolom secara eksplisit jika perlu, 
-        // atau biarkan default untuk mengambil semua kolom termasuk return_tracking_number 
         attributes: [
-            'id', 
-            'order_id', 
-            'buyer_id', 
-            'store_id', 
-            'reason', 
-            'status', 
-            'return_tracking_number', // <-- Kolom yang Anda minta
-            'admin_decision_notes', 
-            'created_at', 
-            'updated_at'
+            'id', 'order_id', 'buyer_id', 'store_id', 'reason',
+            'status', 'return_tracking_number', 'admin_decision_notes',
+            // Ambil kolom SLA
+            'accepted_at', 'resi_submitted_at', 'arrived_at', 'mediation_start_at',
+            'created_at', 'updated_at'
         ],
         include: [
-            { model: db.Order, as: 'order' }, 
+            { model: db.Order, as: 'order' },
             { model: db.DisputeMedia, as: 'media' },
-            { 
-                model: db.User, 
-                as: 'buyer', 
-                attributes: ['id', 'full_name', 'email'] // Mengambil data buyer tertentu 
+            {
+                model: db.User,
+                as: 'buyer',
+                attributes: ['id', 'full_name', 'email']
             }
         ],
-        order: [['created_at', 'DESC']] 
+        order: [['created_at', 'DESC']]
     });
 };
 
@@ -224,49 +235,50 @@ export const acceptReturn = async (disputeId, storeId) => {
     if (!dispute || dispute.store_id !== storeId) {
         throw { statusCode: 403, message: 'Akses ditolak.' };
     }
-    
-    // Update status dispute agar buyer bisa input resi
-    dispute.status = 'returning'; 
+
+    // ⚡ PERBAIKAN SLA: Catat waktu persetujuan
+    dispute.status = 'returning';
+    dispute.accepted_at = new Date(); // <-- Kunci untuk Cronjob "Buyer No-Response"
+
     await dispute.save();
     return dispute;
-};  
+};
 
 export const submitReturnResi = async (disputeId, buyerId, trackingNumber) => {
     const dispute = await db.Dispute.findByPk(disputeId);
-    
+
     if (!dispute) {
         throw { statusCode: 404, message: 'Data sengketa tidak ditemukan.' };
     }
-    
     if (dispute.buyer_id !== buyerId) {
         throw { statusCode: 403, message: 'Akses ditolak. Ini bukan komplain Anda.' };
     }
 
-    // ⚡ PERBAIKAN: Masukkan data dan WAJIB panggil .save() untuk persist ke DB
+    // ⚡ PERBAIKAN SLA: Catat resi dan waktunya
     dispute.return_tracking_number = trackingNumber;
-    dispute.status = 'returning'; 
-    
-    await dispute.save(); 
+    dispute.status = 'returning';
+    dispute.resi_submitted_at = new Date(); // <-- Menandakan pembeli mematuhi SLA 3 hari
 
+    await dispute.save();
     return dispute;
 };
 
 export const confirmReturnReceived = async (disputeId, storeId) => {
     const dispute = await db.Dispute.findByPk(disputeId);
-    
+
     if (!dispute || dispute.store_id !== storeId) {
         throw { statusCode: 403, message: 'Akses ditolak atau sengketa tidak ditemukan.' };
     }
 
-    if (dispute.status !== 'returning') {
+    if (dispute.status !== 'returning' && dispute.status !== 'arrived_at_seller') {
         throw { statusCode: 400, message: 'Status sengketa tidak valid untuk konfirmasi penerimaan.' };
     }
 
     // Gunakan fungsi resolveDispute yang sudah ada untuk skenario REFUND PENUH
-    // Ini otomatis membatalkan order, refund escrow, dan kembalikan stok.
+    // Ini otomatis membatalkan order, membuat RefundPayout, dan kembalikan stok.
     return await resolveDispute(
-        disputeId, 
-        'refund_full', 
-        'Barang retur telah diterima oleh penjual. Refund disetujui otomatis.'
+        disputeId,
+        'refund_full',
+        'Barang retur telah diterima dan dikonfirmasi manual oleh penjual. Refund disetujui otomatis.'
     );
 };

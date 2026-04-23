@@ -29,12 +29,38 @@ export default (sequelize, DataTypes) => {
             allowNull: true
         },
         status: {
-           type: DataTypes.ENUM('open', 'mediation', 'returning', 'resolved'),
+            // ⚡ PERBAIKAN: Penambahan opsi ENUM yang tervalidasi untuk SLA Worker
+            type: DataTypes.ENUM(
+                'open',
+                'returning',
+                'arrived_at_seller',
+                'mediation',
+                'escalated',
+                'resolved',
+                'refund_failed'
+            ),
             allowNull: false,
             defaultValue: 'open'
         },
         admin_decision_notes: {
             type: DataTypes.TEXT,
+            allowNull: true
+        },
+        // ⚡ BARU: Kolom-kolom Timestamp Absolut sebagai patokan waktu Cronjob
+        accepted_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        resi_submitted_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        arrived_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        mediation_start_at: {
+            type: DataTypes.DATE,
             allowNull: true
         }
     }, {
@@ -52,6 +78,12 @@ export default (sequelize, DataTypes) => {
         Dispute.belongsTo(models.Store, { foreignKey: 'store_id', as: 'store' });
         // Relasi ke Media
         Dispute.hasMany(models.DisputeMedia, { foreignKey: 'dispute_id', as: 'media' });
+
+        // ⚡ BARU: Menautkan komplain ke antrean pencairan dana 
+        // (Satu komplain hanya memiliki satu antrean transfer ke payment gateway)
+        if (models.RefundPayout) {
+            Dispute.hasOne(models.RefundPayout, { foreignKey: 'dispute_id', as: 'refund_payout' });
+        }
     };
 
     return Dispute;

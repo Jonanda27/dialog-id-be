@@ -25,6 +25,7 @@ import Chat from './Chat.js';
 import Dispute from './Dispute.js';
 import DisputeMedia from './DisputeMedia.js';
 import UserBankAccount from './UserBankAccount.js';
+import RefundPayout from './RefundPayout.js'; // ⚡ BARU: Import model RefundPayout
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -62,6 +63,7 @@ const models = {
   Dispute: Dispute(sequelize, Sequelize.DataTypes),
   DisputeMedia: DisputeMedia(sequelize, Sequelize.DataTypes),
   UserBankAccount: UserBankAccount.init(sequelize),
+  RefundPayout: RefundPayout.init(sequelize), // ⚡ BARU: Inisialisasi model RefundPayout
 };
 
 // ⚡ PERBAIKAN: Gabungkan instance sequelize ke dalam object db 

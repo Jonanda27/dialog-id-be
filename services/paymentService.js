@@ -1,8 +1,15 @@
 import db from '../models/index.js';
 import midtransClient from 'midtrans-client';
 
-// Inisialisasi Midtrans Snap
+// Inisialisasi Midtrans Snap (Untuk pembuatan transaksi/Checkout)
 const snap = new midtransClient.Snap({
+    isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+    serverKey: process.env.MIDTRANS_SERVER_KEY,
+    clientKey: process.env.MIDTRANS_CLIENT_KEY
+});
+
+// ⚡ BARU: Inisialisasi Midtrans Core API (Diwajibkan untuk fitur Refund/Disbursement)
+const coreApi = new midtransClient.CoreApi({
     isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
     serverKey: process.env.MIDTRANS_SERVER_KEY,
     clientKey: process.env.MIDTRANS_CLIENT_KEY
@@ -15,13 +22,13 @@ export const createMidtransSession = async (billingId) => {
     const billing = await db.Billing.findByPk(billingId, {
         include: [
             { model: db.User, as: 'buyer', attributes: ['full_name', 'email'] },
-            { 
-                model: db.Order, 
+            {
+                model: db.Order,
                 as: 'orders',
-                include: [{ 
-                    model: db.OrderItem, 
+                include: [{
+                    model: db.OrderItem,
                     as: 'items',
-                    include: [{ model: db.Product, as: 'product' }] 
+                    include: [{ model: db.Product, as: 'product' }]
                 }]
             }
         ]
@@ -50,7 +57,7 @@ export const createMidtransSession = async (billingId) => {
                 merchant_name: "AnalogID"
             });
         });
-        
+
         // 2. Masukkan Ongkir (Jika ada)
         if (parseFloat(order.shipping_fee) > 0) {
             itemDetails.push({
@@ -61,7 +68,7 @@ export const createMidtransSession = async (billingId) => {
             });
         }
 
-        // ⚡ 3. MASUKKAN GRADING FEE (Ini yang kurang!)
+        // 3. Masukkan Grading Fee
         if (parseFloat(order.grading_fee) > 0) {
             itemDetails.push({
                 id: `GRADING-${order.id.substring(0, 8)}`,
@@ -111,10 +118,10 @@ export const createMidtransSession = async (billingId) => {
 export const handleMidtransNotification = async (notificationData) => {
     // 1. Verifikasi notifikasi ke Midtrans
     const statusResponse = await snap.transaction.notification(notificationData);
-    
+
     const billingId = statusResponse.order_id;
     const transactionStatus = statusResponse.transaction_status;
-    
+
     // 2. Cari data Billing
     const billing = await db.Billing.findByPk(billingId);
     if (!billing) return;
@@ -132,14 +139,14 @@ export const handleMidtransNotification = async (notificationData) => {
 
             // B. UPDATE SEMUA ORDER DI BAWAH BILLING INI
             await db.Order.update(
-                { 
+                {
                     status: 'paid',
                     payment_method: statusResponse.payment_type,
                     payment_reference: statusResponse.transaction_id
                 },
-                { 
-                    where: { billing_id: billingId }, 
-                    transaction: t 
+                {
+                    where: { billing_id: billingId },
+                    transaction: t
                 }
             );
 
@@ -151,16 +158,14 @@ export const handleMidtransNotification = async (notificationData) => {
 
             const orderIds = orders.map(order => order.id);
 
-            // ⚡ PROSES UPDATE GRADING REQUEST MENJADI COMPLETED
-            // Tiket grading yang sudah diikat ke order_id ini sekarang dianggap lunas.
             await db.GradingRequest.update(
                 { status: 'COMPLETED' },
-                { 
-                    where: { 
+                {
+                    where: {
                         order_id: orderIds,
-                        status: 'MEDIA_READY' // Pastikan hanya mengupdate yang sedang menunggu pembayaran
-                    }, 
-                    transaction: t 
+                        status: 'MEDIA_READY'
+                    },
+                    transaction: t
                 }
             );
 
@@ -171,7 +176,6 @@ export const handleMidtransNotification = async (notificationData) => {
                 });
 
                 for (const item of items) {
-                    // Kurangi stok produk secara atomik
                     await db.Product.decrement('stock', {
                         by: item.qty,
                         where: { id: item.product_id },
@@ -228,9 +232,9 @@ export const getBillingDetail = async (billingId) => {
     return {
         billing,
         orders: billing.orders,
-        payment_status: billing.status === 'paid' ? 'success' : 
-                        billing.status === 'cancelled' ? 'failure' : 
-                        billing.status === 'expired' ? 'expired' : 'pending'
+        payment_status: billing.status === 'paid' ? 'success' :
+            billing.status === 'cancelled' ? 'failure' :
+                billing.status === 'expired' ? 'expired' : 'pending'
     };
 };
 
@@ -240,13 +244,73 @@ export const getBillingDetail = async (billingId) => {
 export const verifyBillingStatus = async (billingId) => {
     try {
         const statusResponse = await snap.transaction.status(billingId);
-        
-        // Gunakan fungsi notifikasi yang sudah ada untuk update DB jika statusnya sukses
         await handleMidtransNotification(statusResponse);
-        
         return await getBillingDetail(billingId);
     } catch (error) {
         console.error("Midtrans Verify Error:", error);
         throw { statusCode: 500, message: "Gagal memverifikasi status ke Midtrans" };
+    }
+};
+
+
+// =========================================================================
+// ⚡ FASE 5: LOGIKA EKSEKUSI PENGEMBALIAN DANA (REFUND PAYOUT)
+// =========================================================================
+
+/**
+ * Memproses pencairan dana refund kembali ke pembeli melalui Midtrans API
+ * Digunakan oleh Automation Service & Worker Retry Mechanism
+ */
+export const processRefundPayout = async (payoutId) => {
+    const t = await db.sequelize.transaction();
+    try {
+        const payout = await db.RefundPayout.findByPk(payoutId, { transaction: t, lock: t.LOCK.UPDATE });
+
+        if (!payout) throw new Error(`Refund Payout dengan ID ${payoutId} tidak ditemukan.`);
+        if (payout.status === 'completed') throw new Error('Refund ini sudah berhasil diproses sebelumnya.');
+
+        const order = await db.Order.findByPk(payout.order_id, { transaction: t });
+
+        // Jika tidak ada payment_reference (transaksi tidak via Midtrans), kita bypass 
+        // simulasi refund agar tidak error di local development
+        if (!order || !order.payment_reference) {
+            payout.status = 'completed';
+            payout.external_payout_id = `MOCK-REFUND-${Date.now()}`;
+            await payout.save({ transaction: t });
+            await t.commit();
+            return payout;
+        }
+
+        // Siapkan parameter pengembalian ke Midtrans
+        const refundParams = {
+            refund_key: `REFUND-${payout.id}`,
+            amount: Number(payout.amount),
+            reason: "Sengketa Pesanan (Dispute Resolution)"
+        };
+
+        // Hit Midtrans Core API (Direct Refund untuk Credit Card/E-Wallet tertentu)
+        try {
+            const midtransRefundRes = await coreApi.transaction.refundDirect(order.payment_reference, refundParams);
+
+            payout.status = 'completed';
+            payout.external_payout_id = midtransRefundRes.refund_id || midtransRefundRes.transaction_id;
+            payout.error_log = null; // Bersihkan error jika berhasil
+
+        } catch (midtransError) {
+            // Tangkap error spesifik dari gateway (misal: Saldo tidak cukup, Fitur tidak didukung)
+            payout.status = 'failed';
+            payout.retry_count += 1;
+            payout.error_log = midtransError.message || JSON.stringify(midtransError);
+        }
+
+        await payout.save({ transaction: t });
+        await t.commit();
+
+        return payout;
+
+    } catch (error) {
+        if (t) await t.rollback();
+        console.error(`[PAYMENT SERVICE] Fatal Error processing refund ${payoutId}:`, error);
+        throw error;
     }
 };
