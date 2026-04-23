@@ -2,13 +2,11 @@ import jwt from 'jsonwebtoken';
 import AuctionRedisService from '../services/auctionRedisService.js';
 
 export default function initializeAuctionSocket(io) {
-    // 1. Isolasi Namespace: Kita pisahkan koneksi lelang dari notifikasi atau chat reguler
+    // 1. Isolasi Namespace: Memisahkan koneksi lelang dari notifikasi atau chat reguler
     const auctionNamespace = io.of('/auction');
 
     // 2. Middleware Autentikasi (High Cohesion)
-    // Mencegah koneksi siluman. Hanya user terautentikasi yang bisa menekan bid.
     auctionNamespace.use((socket, next) => {
-        // Mendukung token yang dikirim via handshake auth atau headers
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization;
 
         if (!token) {
@@ -17,7 +15,6 @@ export default function initializeAuctionSocket(io) {
 
         try {
             const decoded = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
-            // Injeksi data user ke dalam objek socket untuk digunakan pada event listener
             socket.user = decoded;
             next();
         } catch (err) {
@@ -31,22 +28,22 @@ export default function initializeAuctionSocket(io) {
 
         /**
          * Event: JOIN_AUCTION
-         * Saat user masuk ke halaman detail produk yang sedang dilelang
+         * Saat user masuk ke halaman khusus lelang
          */
         socket.on('JOIN_AUCTION', async (payload) => {
             const { auctionId } = payload;
             const roomName = `auction:${auctionId}`;
+            const userId = socket.user.id;
 
-            // Masukkan socket user ke dalam "Kamar" spesifik produk ini
+            // Masukkan socket user ke dalam "Kamar" spesifik lelang ini
             socket.join(roomName);
-            console.log(`[SOCKET] User ${socket.user.id} bergabung ke room ${roomName}`);
+            console.log(`[SOCKET] User ${userId} bergabung ke room ${roomName}`);
 
             try {
-                const currentState = await AuctionRedisService.getAuctionState(auctionId);
+                // PERBAIKAN TAHAP 3: Mengambil State Komposit (Harga, Klasemen Top 3, dan History)
+                const currentState = await AuctionRedisService.getAuctionStatePayload(auctionId, userId);
 
-                // ⚡ TAMBAHKAN BARIS INI: Cek wujud asli data dari Redis
-                console.log(`[SOCKET DEBUG] Payload untuk SYNC_AUCTION_STATE:`, JSON.stringify(currentState, null, 2));
-
+                // Sinkronisasi awal layar client dengan kebenaran absolut dari memori Redis
                 socket.emit('SYNC_AUCTION_STATE', currentState);
             } catch (error) {
                 console.error(`[SOCKET] Gagal melakukan sinkronisasi awal untuk ${auctionId}:`, error);
@@ -55,49 +52,51 @@ export default function initializeAuctionSocket(io) {
 
         /**
          * Event: SUBMIT_BID
-         * Saat user menekan tombol "Bid +Rp25.000"
+         * Saat user menekan tombol "Bid Dinamis"
          */
         socket.on('SUBMIT_BID', async (payload) => {
             const { auctionId, expectedPrice, increment } = payload;
-            const userId = socket.user.id; // Diambil dari token JWT, tidak bisa dimanipulasi dari frontend
+            const userId = socket.user.id;
 
             try {
-                // Delegasi eksekusi atomik ke Redis Service
+                // Delegasi eksekusi atomik ke Redis Service (LUA Script)
                 const result = await AuctionRedisService.placeBid(
                     auctionId,
                     userId,
                     expectedPrice,
-                    increment
+                    increment // Bertindak sebagai batas bawah minimum increment
                 );
 
                 if (result.success) {
-                    // BROADCAST: Harga berhasil naik. 
-                    // Pancarkan event 'NEW_HIGHEST_BID' ke SELURUH user yang ada di room ini,
-                    // agar layar mereka semua berkedip secara instan dan sinkron ke harga baru.
-                    auctionNamespace.to(`auction:${auctionId}`).emit('NEW_HIGHEST_BID', {
+                    // PERBAIKAN TAHAP 3: Broadcast State Terkini (Single Source of Truth)
+                    // Mengubah event lama 'NEW_HIGHEST_BID' menjadi 'AUCTION_STATE_UPDATED' 
+                    // agar layar client (Top 3 dan History) merender ulang secara serentak.
+                    auctionNamespace.to(`auction:${auctionId}`).emit('AUCTION_STATE_UPDATED', {
                         auctionId: auctionId,
                         newPrice: result.newPrice,
                         winnerId: result.winnerId,
+                        topBidders: result.topBidders,
+                        recentLog: result.recentLog,
                         timestamp: new Date().toISOString()
                     });
                 }
             } catch (error) {
-                // ⚡ FIX: Tambahkan logging internal untuk visibilitas Server (Observability)
-                // Mencatat detail transaksi yang ditolak oleh LUA Script (Race Condition / Cooldown)
+                // Logging internal untuk Server Observability (Mencatat Race Condition / Cooldown Timeout)
                 console.error(`[SOCKET ❌ BID_REJECTED] User: ${userId} | Auction: ${auctionId} | Expected: ${expectedPrice} | Reason: ${error.message}`);
 
-                // ERROR ISOLATION: Skenario Cooldown 5 detik atau Jebakan Harga (Race Condition).
-                // Kita TIDAK mem-broadcast error ini. Kita hanya melemparnya kembali ke user yang menekan tombol.
+                // ERROR ISOLATION: 
+                // Melempar error spesifik (misal: "Harga telah naik, minimum bid saat ini Rp...")
+                // HANYA ke client yang gagal, tanpa mengganggu layar user lain di room tersebut.
                 socket.emit('BID_ERROR', {
                     auctionId: auctionId,
-                    message: error.message // Berisi pesan dari throw error di Redis Service
+                    message: error.message
                 });
             }
         });
 
         /**
          * Event: LEAVE_AUCTION
-         * Bersih-bersih saat komponen React di unmount
+         * Bersih-bersih saat komponen React di unmount (User pindah halaman)
          */
         socket.on('LEAVE_AUCTION', (payload) => {
             const { auctionId } = payload;

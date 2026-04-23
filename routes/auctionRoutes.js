@@ -2,14 +2,76 @@ import express from 'express';
 import {
     createAuction,
     getAuctionsByStore,
-    cancelAuction
+    cancelAuction,
+    getMarketAuctions,
+    getAuctionDetail
 } from '../controllers/auctionController.js';
 import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
-import {uploadAuctionPhotos} from '../middlewares/upload.js';
+import { uploadAuctionPhotos } from '../middlewares/upload.js';
 
 const router = express.Router();
 
-// Proteksi global untuk semua rute lelang (Seller Only & Approved Store)
+/* ==========================================================
+ * AREA PUBLIK / PEMBELI (BUYER MARKET)
+ * ========================================================== */
+
+/**
+ * @swagger
+ * /api/v1/auctions/market:
+ *   get:
+ *     summary: Mendapatkan daftar lelang aktif dan terjadwal (Dashboard Buyer)
+ *     tags: [Auctions, Market]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Nomor halaman (default 1)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Jumlah item per halaman (default 12)
+ *     responses:
+ *       200:
+ *         description: Berhasil mengambil daftar pasar lelang (OK)
+ *       400:
+ *         description: Parameter query tidak valid (Bad Request)
+ *       404:
+ *         description: Data lelang tidak ditemukan (Not Found)
+ */
+router.get('/market', getMarketAuctions);
+
+/**
+ * @swagger
+ * /api/v1/auctions/market/{id}:
+ *   get:
+ *     summary: Mengambil detail fisik barang lelang (Initial Load UI Buyer)
+ *     tags: [Auctions, Market]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID Lelang
+ *     responses:
+ *       200:
+ *         description: Berhasil mengambil detail statis lelang (OK)
+ *       400:
+ *         description: Format ID tidak valid (Bad Request)
+ *       404:
+ *         description: Data lelang tidak ditemukan (Not Found)
+ */
+router.get('/market/:id', getAuctionDetail);
+
+
+/* ==========================================================
+ * AREA PENJUAL (SELLER MANAGEMENT)
+ * ========================================================== */
+
+// Proteksi global untuk rute manajemen lelang (Seller Only & Approved Store)
 router.use(authenticate, authorize('seller'), isStoreApproved);
 
 /**
@@ -17,7 +79,7 @@ router.use(authenticate, authorize('seller'), isStoreApproved);
  * /api/v1/auctions/my-store:
  *   get:
  *     summary: Mendapatkan daftar lelang milik toko sendiri (Seller Only)
- *     tags: [Auctions]
+ *     tags: [Auctions, Seller]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -36,8 +98,8 @@ router.get('/my-store', getAuctionsByStore);
  * @swagger
  * /api/v1/auctions:
  *   post:
- *     summary: Buat lelang baru dengan upload foto barang khusus lelang
- *     tags: [Auctions]
+ *     summary: Buat lelang baru dengan upload foto barang
+ *     tags: [Auctions, Seller]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -103,7 +165,7 @@ router.post('/', uploadAuctionPhotos.array('photos', 5), createAuction);
  * /api/v1/auctions/{id}/cancel:
  *   put:
  *     summary: Batalkan lelang (Seller Only)
- *     tags: [Auctions]
+ *     tags: [Auctions, Seller]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -117,7 +179,7 @@ router.post('/', uploadAuctionPhotos.array('photos', 5), createAuction);
  *       200:
  *         description: Lelang berhasil dibatalkan (OK)
  *       400:
- *         description: Lelang tidak bisa dibatalkan karena sudah dimulai atau berakhir (Bad Request)
+ *         description: Lelang tidak bisa dibatalkan karena status tidak valid (Bad Request)
  *       401:
  *         description: Token tidak valid atau tidak ditemukan (Unauthorized)
  *       403:

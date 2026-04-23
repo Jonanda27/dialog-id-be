@@ -1,9 +1,14 @@
+import { Op } from 'sequelize';
 import db from '../models/index.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
-// PERBAIKAN: Menghapus Product dan ProductMedia, diganti Store dan AuctionMedia
+// Menggunakan Store dan AuctionMedia
 const { Auction, Store, AuctionMedia, sequelize } = db;
+
+/* ==========================================================
+ * SELLER AREA (MANAJEMEN LELANG OLEH TOKO)
+ * ========================================================== */
 
 /**
  * @desc    Membuat lelang baru (Decoupled dari Product)
@@ -11,7 +16,6 @@ const { Auction, Store, AuctionMedia, sequelize } = db;
  * @access  Private (Seller only)
  */
 export const createAuction = asyncHandler(async (req, res) => {
-    // Parsing text dari multipart/form-data
     const {
         item_name, description, condition,
         weight, length, width, height,
@@ -20,18 +24,15 @@ export const createAuction = asyncHandler(async (req, res) => {
 
     const sellerId = req.user.id;
 
-    // 1. Dapatkan referensi Toko (Store ID)
     const store = await Store.findOne({ where: { user_id: sellerId } });
     if (!store) {
         return errorResponse(res, 404, 'Toko tidak ditemukan.');
     }
 
-    // 2. Validasi Foto
     if (!req.files || req.files.length === 0) {
         return errorResponse(res, 400, 'Minimal satu foto barang lelang harus diunggah.');
     }
 
-    // 3. Validasi input waktu
     const start = new Date(start_time);
     const end = new Date(end_time);
     const now = new Date();
@@ -47,11 +48,9 @@ export const createAuction = asyncHandler(async (req, res) => {
         return errorResponse(res, 400, 'Durasi lelang harus minimal 1 jam dan maksimal 24 jam.');
     }
 
-    // 4. Eksekusi Atomic Transaction
     const transaction = await sequelize.transaction();
 
     try {
-        // 4A. Simpan Induk Lelang
         const auction = await Auction.create({
             store_id: store.id,
             item_name,
@@ -68,16 +67,13 @@ export const createAuction = asyncHandler(async (req, res) => {
             status: 'SCHEDULED'
         }, { transaction });
 
-        // 4B. Simpan Media Galeri Lelang
         const mediaData = req.files.map((file, index) => ({
             auction_id: auction.id,
-            // Sesuaikan properti file.filename dengan setup multer Anda
             media_url: `/uploads/auctions/${file.filename || file.originalname}`,
-            is_primary: index === 0 // Gambar indeks 0 dijadikan thumbnail
+            is_primary: index === 0
         }));
 
         await AuctionMedia.bulkCreate(mediaData, { transaction });
-
         await transaction.commit();
 
         return successResponse(res, 201, 'Lelang baru berhasil didaftarkan ke dalam sistem.', auction);
@@ -100,7 +96,6 @@ export const getAuctionsByStore = asyncHandler(async (req, res) => {
         return errorResponse(res, 404, 'Toko tidak ditemukan.');
     }
 
-    // PERBAIKAN: Langsung include AuctionMedia, tidak perlu lewat relasi produk lagi
     const auctions = await Auction.findAll({
         where: { store_id: store.id },
         include: [{
@@ -139,8 +134,97 @@ export const cancelAuction = asyncHandler(async (req, res) => {
         return errorResponse(res, 400, 'Hanya lelang berstatus SCHEDULED yang dapat dibatalkan.');
     }
 
-    // PERBAIKAN: Tidak perlu transaction dan hapus logika gembok product.is_locked
     await auction.update({ status: 'FAILED' });
-
     return successResponse(res, 200, 'Lelang berhasil dibatalkan secara permanen.');
+});
+
+
+/* ==========================================================
+ * BUYER / PUBLIC AREA (EKSPLORASI LELANG)
+ * ========================================================== */
+
+/**
+ * @desc    Mengambil daftar lelang aktif/terjadwal untuk Event Toko (Dashboard Buyer)
+ * @route   GET /api/v1/auctions/market
+ * @access  Public / Protected Buyer
+ */
+export const getMarketAuctions = asyncHandler(async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+    const offset = (page - 1) * limit;
+
+    const thresholdDate = new Date();
+    thresholdDate.setHours(thresholdDate.getHours() + 24);
+
+    const { count, rows } = await Auction.findAndCountAll({
+        where: {
+            [Op.or]: [
+                { status: 'ACTIVE' },
+                {
+                    status: 'SCHEDULED',
+                    start_time: { [Op.lte]: thresholdDate }
+                }
+            ]
+        },
+        include: [
+            {
+                model: Store,
+                as: 'store',
+                // ⚡ WAJIB: Hanya gunakan 'id' dan 'name' yang benar-benar ada di model Store Anda
+                attributes: ['id', 'name']
+            },
+            {
+                model: AuctionMedia,
+                as: 'media',
+                attributes: ['media_url', 'is_primary'],
+                where: { is_primary: true },
+                required: false
+            }
+        ],
+        order: [
+            ['status', 'ASC'],
+            ['start_time', 'ASC']
+        ],
+        limit,
+        offset,
+        distinct: true
+    });
+
+    return successResponse(res, 200, 'Berhasil mengambil daftar pasar lelang.', {
+        totalItems: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: page,
+        auctions: rows
+    });
+});
+
+/**
+ * @desc    Mengambil detail statis lelang untuk halaman khusus produk lelang
+ * @route   GET /api/v1/auctions/market/:id
+ * @access  Public / Protected Buyer
+ */
+export const getAuctionDetail = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const auction = await Auction.findByPk(id, {
+        include: [
+            {
+                model: Store,
+                as: 'store',
+                // ⚡ WAJIB: Hanya gunakan 'id', 'name', dan 'description'
+                attributes: ['id', 'name', 'description']
+            },
+            {
+                model: AuctionMedia,
+                as: 'media',
+                attributes: ['id', 'media_url', 'is_primary']
+            }
+        ]
+    });
+
+    if (!auction) {
+        return errorResponse(res, 404, 'Detail lelang tidak ditemukan atau telah dihapus.');
+    }
+
+    return successResponse(res, 200, 'Berhasil mengambil detail lelang.', auction);
 });
