@@ -16,11 +16,15 @@ import GradingRequest from './GradingRequest.js';
 import AddressInit from './Address.js';
 import Review from './Review.js';
 import ReviewMedia from './ReviewMedia.js';
-import Billing from './Billing.js';
 import Auction from './Auction.js';
 import AuctionBid from './AuctionBid.js';
 import StoreSuspension from './StoreSuspension.js';
 import AuctionMedia from './AuctionMedia.js';
+import Billing from './Billing.js';
+import Chat from './Chat.js';
+import Dispute from './Dispute.js';
+import DisputeMedia from './DisputeMedia.js';
+import UserBankAccount from './UserBankAccount.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -54,9 +58,11 @@ const models = {
   AuctionBid: AuctionBid.init(sequelize),
   StoreSuspension: StoreSuspension.init(sequelize),
   AuctionMedia: AuctionMedia.init(sequelize),
+  Chat: Chat.init(sequelize),
+  Dispute: Dispute(sequelize, Sequelize.DataTypes),
+  DisputeMedia: DisputeMedia(sequelize, Sequelize.DataTypes),
+  UserBankAccount: UserBankAccount.init(sequelize),
 };
-
-
 
 // ⚡ PERBAIKAN: Gabungkan instance sequelize ke dalam object db 
 // agar bisa dipanggil sebagai db.sequelize di Service
@@ -73,7 +79,6 @@ Object.values(models).forEach((model) => {
     model.associate(db);
   }
 });
-
 
 // Export secara named untuk kebutuhan spesifik
 export { sequelize, Sequelize };

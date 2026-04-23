@@ -1,5 +1,5 @@
 import express from 'express';
-import { getPendingStores, updateStoreStatus, suspendStore, unsuspendStore } from '../controllers/adminController.js';
+import { getPendingStores, updateStoreStatus, suspendStore, unsuspendStore, getRefunds } from '../controllers/adminController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -148,5 +148,16 @@ router.post('/stores/:id/suspend', suspendStore);
  *         description: Toko tidak ditemukan (Not Found)
  */
 router.post('/stores/:id/unsuspend', unsuspendStore);
+
+/**
+ * @swagger
+ * /api/admin/refunds:
+ * get:
+ * summary: Daftar pesanan yang harus di-refund ke buyer (Admin Only)
+ * tags: [Admin]
+ * security:
+ * - bearerAuth: []
+ */
+router.get('/refunds', getRefunds);
 
 export default router;

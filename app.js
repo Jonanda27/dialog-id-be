@@ -14,6 +14,7 @@ import { errorResponse, successResponse } from './utils/apiResponse.js';
 
 // Import Socket Controllers (Modul Lelang)
 import initializeAuctionSocket from './socket/auctionSocket.js'; // [NEW]
+import initializeChatSocket from './socket/chatSocket.js';
 
 // Import Routes
 import authRoutes from './routes/authRoutes.js';
@@ -29,6 +30,8 @@ import shippingRoutes from './routes/shippingRoutes.js';
 import gradingRoutes from './routes/gradingRoutes.js';
 import disputeRoutes from './routes/disputeRoutes.js';
 import auctionRoutes from './routes/auctionRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
+import userBankRoutes from './routes/userBankRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -76,6 +79,8 @@ const io = new Server(server, {
     credentials: true
   }
 });
+
+initializeChatSocket(io);
 
 // Mendaftarkan logic Controller untuk namespace Auction
 initializeAuctionSocket(io);
@@ -141,7 +146,8 @@ app.use('/api/v1/shipping', shippingRoutes);
 app.use('/api/grading', gradingRoutes);
 app.use('/api/disputes', disputeRoutes);
 app.use('/api/v1/auctions', auctionRoutes); 
-
+app.use('/api/chat', chatRoutes);
+app.use('/api/user-banks', userBankRoutes);
 
 // ==========================================
 // 5. 404 & GLOBAL ERROR HANDLING

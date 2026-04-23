@@ -1,8 +1,9 @@
 import express from 'express';
 
-// import { open } from '../controllers/disputeController.js'; 
+import { openDispute, getMyDisputes, sellerAcceptReturn, buyerSubmitResi, sellerConfirmReturn } from '../controllers/disputeController.js'; 
 
-import { authenticate, authorize } from '../middlewares/auth.js';
+import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
+import { uploadMedia } from '../utils/cloudinary.js';
 
 
 
@@ -86,8 +87,31 @@ const router = express.Router();
 
  */
 
-// router.post('/open', authenticate, authorize('buyer'), open);
+router.post(
+    '/open', 
+    authenticate, 
+    authorize('buyer'), 
+    // [BARU] Tambahkan middleware upload. 
+    // 'files' adalah nama field di FormData, angka 5 adalah batas maksimal foto.
+    uploadMedia.array('files', 5), 
+    openDispute
+);
 
 
+// [GET] List Dispute (Buyer & Seller)
+router.get('/',authenticate, getMyDisputes);
+
+// Seller setuju barang balik
+router.patch('/:id/accept-return', authenticate, authorize('seller'), isStoreApproved, sellerAcceptReturn);
+
+// Buyer masukkan resi retur
+router.patch(
+    '/:id/submit-return-resi', 
+    authenticate, 
+    authorize('buyer'), 
+    buyerSubmitResi
+);
+
+router.patch('/:id/confirm-return', authenticate, authorize('seller'), isStoreApproved, sellerConfirmReturn);
 
 export default router;

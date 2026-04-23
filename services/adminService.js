@@ -94,3 +94,37 @@ export const unsuspendStore = async (storeId) => {
         throw error;
     }
 };
+
+export const getRefundList = async () => {
+    return await db.Order.findAll({
+        where: { 
+            status: 'cancelled' // Hanya pesanan yang batal 
+        },
+        include: [
+            {
+                model: db.Escrow,
+                as: 'escrow',
+                where: { status: 'refunded' }, // Hanya dana yang siap di-refund 
+                attributes: ['id', 'amount_held', 'status', 'updated_at']
+            },
+            {
+                model: db.User,
+                as: 'buyer',
+                attributes: ['id', 'full_name', 'email'],
+                include: [
+                    {
+                        model: db.UserBankAccount, // Model baru yang kita buat tadi
+                        as: 'bankAccounts',
+                        attributes: ['bank_name', 'bank_account_number', 'bank_account_name']
+                    }
+                ]
+            },
+            {
+                model: db.Store,
+                as: 'store',
+                attributes: ['id', 'name']
+            }
+        ],
+        order: [['updated_at', 'DESC']]
+    });
+};

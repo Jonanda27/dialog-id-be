@@ -82,6 +82,8 @@ export default class Order extends Model {
         this.belongsTo(models.Store, { foreignKey: 'store_id', as: 'store' });
         this.hasMany(models.OrderItem, { foreignKey: 'order_id', as: 'items' });
         this.hasOne(models.Escrow, { foreignKey: 'order_id', as: 'escrow' });
+        // Di dalam models/Order.js pada static associate(models)
+this.hasOne(models.Dispute, { foreignKey: 'order_id', as: 'dispute' });
 
         // Relasi referensial opsional untuk memanggil data detail lelang dari Object Order
         if (models.Auction) {

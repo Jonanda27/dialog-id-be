@@ -13,7 +13,7 @@ module.exports = {
             store_id: { type: Sequelize.UUID, allowNull: false },
             reason: { type: Sequelize.STRING, allowNull: false },
             status: {
-                type: Sequelize.ENUM('open', 'mediation', 'resolved'),
+                type: Sequelize.ENUM('open', 'returning', 'mediation', 'resolved'),
                 allowNull: false, defaultValue: 'open'
             },
             admin_decision_notes: { type: Sequelize.TEXT, allowNull: true },
