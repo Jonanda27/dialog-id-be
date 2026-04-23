@@ -188,27 +188,43 @@ class OrderService {
     }
 
     /**
-     * Mengambil riwayat pesanan milik pembeli (Buyer)
-     */
-    static async getBuyerOrders(buyerId, statusFilter) {
-        const whereClause = { buyer_id: buyerId };
-        if (statusFilter) whereClause.status = statusFilter;
+ * Mengambil riwayat pesanan milik pembeli (Buyer)
+ * Diperbarui untuk menyertakan data dispute jika status pesanan adalah 'disputed'
+ */
+static async getBuyerOrders(buyerId, statusFilter) {
+    const whereClause = { buyer_id: buyerId };
+    if (statusFilter) whereClause.status = statusFilter;
 
-        return await db.Order.findAll({
-            where: whereClause,
-            include: [
-                { model: db.Store, as: 'store' },
-                {
-                    model: db.OrderItem,
-                    as: 'items',
-                    include: [
-                        { model: db.Product, as: 'product', attributes: ['id', 'name', 'price'] }
-                    ]
-                }
-            ],
-            order: [['created_at', 'DESC']]
-        });
-    }
+    return await db.Order.findAll({
+        where: whereClause,
+        include: [
+            { 
+                model: db.Store, 
+                as: 'store',
+                attributes: ['id', 'name', 'logo_url'] 
+            },
+            {
+                model: db.OrderItem,
+                as: 'items',
+                include: [
+                    { 
+                        model: db.Product, 
+                        as: 'product', 
+                        attributes: ['id', 'name', 'price'] 
+                    }
+                ]
+            },
+            // Tambahkan bagian ini untuk mengambil data sengketa
+            {
+                model: db.Dispute,
+                as: 'dispute', // Pastikan alias ini sesuai dengan yang di-define di models/Order.js atau models/index.js
+                attributes: ['id', 'status', 'reason', 'return_tracking_number'],
+                required: false // Menggunakan LEFT JOIN agar order tanpa dispute tetap muncul
+            }
+        ],
+        order: [['created_at', 'DESC']]
+    });
+}
 
     /**
      * Mengambil daftar pesanan yang masuk ke toko.

@@ -1,69 +1,77 @@
-import { Model, DataTypes } from 'sequelize';
-import bcrypt from 'bcrypt';
+import { Model, DataTypes } from "sequelize";
+import bcrypt from "bcrypt";
 
 export default class User extends Model {
   static init(sequelize) {
-    return super.init({
-      id: {
-        type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4,
-        primaryKey: true,
-      },
-      email: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-        validate: {
-          isEmail: true,
-        }
-      },
-      password: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-      full_name: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-      role: {
-        type: DataTypes.ENUM('admin', 'buyer', 'seller'),
-        allowNull: false,
-      }
-    }, {
-      sequelize,
-      tableName: 'users',
-      modelName: 'User',
-      underscored: true, // Mengubah camelCase di JS menjadi snake_case di DB (created_at)
-      hooks: {
-        beforeCreate: async (user) => {
-          if (user.password) {
-            const salt = await bcrypt.genSalt(10);
-            user.password = await bcrypt.hash(user.password, salt);
-          }
+    return super.init(
+      {
+        id: {
+          type: DataTypes.UUID,
+          defaultValue: DataTypes.UUIDV4,
+          primaryKey: true,
         },
-        beforeUpdate: async (user) => {
-          if (user.changed('password')) {
-            const salt = await bcrypt.genSalt(10);
-            user.password = await bcrypt.hash(user.password, salt);
-          }
-        }
-      }
-    });
+        email: {
+          type: DataTypes.STRING,
+          allowNull: false,
+          unique: true,
+          validate: {
+            isEmail: true,
+          },
+        },
+        password: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        full_name: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        role: {
+          type: DataTypes.ENUM("admin", "buyer", "seller"),
+          allowNull: false,
+        },
+      },
+      {
+        sequelize,
+        tableName: "users",
+        modelName: "User",
+        underscored: true, // Mengubah camelCase di JS menjadi snake_case di DB (created_at)
+        hooks: {
+          beforeCreate: async (user) => {
+            if (user.password) {
+              const salt = await bcrypt.genSalt(10);
+              user.password = await bcrypt.hash(user.password, salt);
+            }
+          },
+          beforeUpdate: async (user) => {
+            if (user.changed("password")) {
+              const salt = await bcrypt.genSalt(10);
+              user.password = await bcrypt.hash(user.password, salt);
+            }
+          },
+        },
+      },
+    );
   }
 
   static associate(models) {
     // Relasi One-to-One
     this.hasOne(models.Store, {
-      foreignKey: 'user_id',
-      as: 'store'
+      foreignKey: "user_id",
+      as: "store",
     });
     this.hasMany(models.Order, {
-      foreignKey: 'buyer_id',
-      as: 'buyerOrders' 
+      foreignKey: "buyer_id",
+      as: "buyerOrders",
     });
-    this.hasMany(models.Address, { 
-      foreignKey: 'user_id', 
-      as: 'addresses' });
+    this.hasMany(models.Address, {
+      foreignKey: "user_id",
+      as: "addresses",
+    });
+    this.hasMany(models.UserBankAccount, {
+      foreignKey: "user_id",
+      as: "bankAccounts",
+    });
   }
 
   /**

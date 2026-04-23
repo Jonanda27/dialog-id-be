@@ -45,3 +45,20 @@ export const unsuspendStore = asyncHandler(async (req, res) => {
     const result = await adminService.unsuspendStore(id);
     return successResponse(res, 200, 'Suspensi toko telah dicabut', result);
 });
+
+
+/**
+ * @desc    Mengambil daftar pesanan yang memerlukan refund manual oleh Admin
+ * @route   GET /api/admin/refunds
+ * @access  Private (Admin Only)
+ */
+export const getRefunds = asyncHandler(async (req, res) => {
+    const result = await adminService.getRefundList();
+    
+    return successResponse(
+        res, 
+        200, 
+        'Berhasil mengambil daftar refund pesanan', 
+        result
+    );
+});
