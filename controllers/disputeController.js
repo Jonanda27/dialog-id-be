@@ -28,9 +28,9 @@ export const openDispute = asyncHandler(async (req, res) => {
     const result = await disputeService.openDispute(order_id, buyerId, reason, files);
 
     return successResponse(
-        res, 
-        201, 
-        'Komplain berhasil diajukan. Dana pesanan telah dibekukan sementara.', 
+        res,
+        201,
+        'Komplain berhasil diajukan. Dana pesanan telah dibekukan sementara.',
         result
     );
 });
@@ -58,25 +58,26 @@ export const sellerAcceptReturn = asyncHandler(async (req, res) => {
 /**
  * @desc    Buyer input resi pengembalian barang
  */
-export const buyerSubmitResi = asyncHandler(async (req, res) => {
+export const submitResi = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { tracking_number } = req.body; // Harus sesuai dengan key di FE
+    // ⚡ PERBAIKAN: Ambil courier dari body
+    const { tracking_number, courier } = req.body;
     const buyerId = req.user.id;
 
-    if (!tracking_number) {
-        return errorResponse(res, 400, 'Nomor resi wajib diisi.');
+    if (!tracking_number || !courier) {
+        return errorResponse(res, 400, 'Nomor resi dan kode kurir wajib diisi.');
     }
 
-    const result = await disputeService.submitReturnResi(id, buyerId, tracking_number);
+    const dispute = await disputeService.submitReturnResi(id, buyerId, tracking_number, courier);
 
-    return successResponse(res, 200, 'Resi pengembalian berhasil disimpan.', result);
+    return successResponse(res, 200, 'Resi pengembalian berhasil disubmit.', dispute);
 });
 
 export const sellerConfirmReturn = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const storeId = req.store.id;
-    
+
     const result = await disputeService.confirmReturnReceived(id, storeId);
-    
+
     return successResponse(res, 200, 'Barang diterima, pesanan dibatalkan dan dana dikembalikan ke pembeli.', result);
 });

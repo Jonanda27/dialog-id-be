@@ -244,7 +244,10 @@ export const acceptReturn = async (disputeId, storeId) => {
     return dispute;
 };
 
-export const submitReturnResi = async (disputeId, buyerId, trackingNumber) => {
+// Di dalam services/disputeService.js
+
+// ⚡ PERBAIKAN: Tambahkan parameter `courier`
+export const submitReturnResi = async (disputeId, buyerId, trackingNumber, courier) => {
     const dispute = await db.Dispute.findByPk(disputeId);
 
     if (!dispute) {
@@ -253,11 +256,15 @@ export const submitReturnResi = async (disputeId, buyerId, trackingNumber) => {
     if (dispute.buyer_id !== buyerId) {
         throw { statusCode: 403, message: 'Akses ditolak. Ini bukan komplain Anda.' };
     }
+    if (!courier) {
+        throw { statusCode: 400, message: 'Kode kurir wajib dipilih.' };
+    }
 
-    // ⚡ PERBAIKAN SLA: Catat resi dan waktunya
+    // ⚡ PERBAIKAN SLA: Catat resi, kurir, dan waktunya
     dispute.return_tracking_number = trackingNumber;
+    dispute.return_courier = courier; // <-- Simpan kode kurir
     dispute.status = 'returning';
-    dispute.resi_submitted_at = new Date(); // <-- Menandakan pembeli mematuhi SLA 3 hari
+    dispute.resi_submitted_at = new Date();
 
     await dispute.save();
     return dispute;

@@ -28,6 +28,10 @@ export default (sequelize, DataTypes) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        return_courier: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
         status: {
             // ⚡ PERBAIKAN: Penambahan opsi ENUM yang tervalidasi untuk SLA Worker
             type: DataTypes.ENUM(

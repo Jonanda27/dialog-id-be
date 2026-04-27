@@ -1,6 +1,6 @@
 import express from 'express';
 
-import { openDispute, getMyDisputes, sellerAcceptReturn, buyerSubmitResi, sellerConfirmReturn } from '../controllers/disputeController.js'; 
+import { openDispute, getMyDisputes, sellerAcceptReturn, submitResi, sellerConfirmReturn } from '../controllers/disputeController.js'; 
 
 import { authenticate, authorize, isStoreApproved } from '../middlewares/auth.js';
 import { uploadMedia } from '../utils/cloudinary.js';
@@ -109,7 +109,7 @@ router.patch(
     '/:id/submit-return-resi', 
     authenticate, 
     authorize('buyer'), 
-    buyerSubmitResi
+    submitResi
 );
 
 router.patch('/:id/confirm-return', authenticate, authorize('seller'), isStoreApproved, sellerConfirmReturn);
