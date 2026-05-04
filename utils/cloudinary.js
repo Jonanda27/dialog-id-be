@@ -16,6 +16,7 @@ const storage = new CloudinaryStorage({
     let folderName = 'analog_media';
     if (req.originalUrl.includes('chat')) folderName = 'analog_chat';
     if (req.originalUrl.includes('disputes')) folderName = 'analog_disputes';
+    if (req.originalUrl.includes('profile')) folderName = 'analog_profiles';
 
     return {
       folder: folderName,

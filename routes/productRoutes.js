@@ -65,8 +65,6 @@ router.post('/bulk', authenticate, authorize('seller'), isStoreApproved, bulkCre
  */
 router.post('/sync', syncProducts);
 
-router.get('/', getProducts);
-
 /**
  * @swagger
  * /api/v1/products:
@@ -75,6 +73,10 @@ router.get('/', getProducts);
  *     tags: [Products]
  */
 router.post('/', authenticate, authorize('seller'), isStoreApproved, uploadProductPhotos.array('photos', 5), createProduct);
+
+
+router.get('/', getProducts);
+
 
 // ==========================================
 // 4. RUTE DINAMIS / PARAMETER (TARUH PALING BAWAH!)

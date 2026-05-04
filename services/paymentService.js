@@ -1,5 +1,6 @@
 import db from '../models/index.js';
 import midtransClient from 'midtrans-client';
+import { io } from '../app.js';
 
 // Inisialisasi Midtrans Snap
 const snap = new midtransClient.Snap({
@@ -115,8 +116,10 @@ export const handleMidtransNotification = async (notificationData) => {
     const billingId = statusResponse.order_id;
     const transactionStatus = statusResponse.transaction_status;
     
-    // 2. Cari data Billing
-    const billing = await db.Billing.findByPk(billingId);
+    // 2. Cari data Billing beserta data pembeli untuk detail notifikasi
+    const billing = await db.Billing.findByPk(billingId, {
+        include: [{ model: db.User, as: 'buyer', attributes: ['full_name'] }]
+    });
     if (!billing) return;
 
     // 3. Logika Update jika SUKSES (settlement atau capture untuk kartu kredit)
@@ -143,7 +146,7 @@ export const handleMidtransNotification = async (notificationData) => {
                 }
             );
 
-            // C. LOGIKA PENGURANGAN STOK DAN UPDATE GRADING REQUEST
+            // C. AMBIL SEMUA ORDER UNTUK NOTIFIKASI DAN UPDATE STOK
             const orders = await db.Order.findAll({
                 where: { billing_id: billingId },
                 transaction: t
@@ -152,18 +155,18 @@ export const handleMidtransNotification = async (notificationData) => {
             const orderIds = orders.map(order => order.id);
 
             // ⚡ PROSES UPDATE GRADING REQUEST MENJADI COMPLETED
-            // Tiket grading yang sudah diikat ke order_id ini sekarang dianggap lunas.
             await db.GradingRequest.update(
                 { status: 'COMPLETED' },
                 { 
                     where: { 
                         order_id: orderIds,
-                        status: 'MEDIA_READY' // Pastikan hanya mengupdate yang sedang menunggu pembayaran
+                        status: 'MEDIA_READY'
                     }, 
                     transaction: t 
                 }
             );
 
+            // D. PENGURANGAN STOK PER ITEM
             for (const order of orders) {
                 const items = await db.OrderItem.findAll({
                     where: { order_id: order.id },
@@ -171,7 +174,6 @@ export const handleMidtransNotification = async (notificationData) => {
                 });
 
                 for (const item of items) {
-                    // Kurangi stok produk secara atomik
                     await db.Product.decrement('stock', {
                         by: item.qty,
                         where: { id: item.product_id },
@@ -180,10 +182,26 @@ export const handleMidtransNotification = async (notificationData) => {
                 }
             }
 
+            // SELESAIKAN TRANSAKSI DB
             await t.commit();
             console.log(`Billing ${billingId} Berhasil Dilunasi, Stok Dikurangi, dan Status Grading Diperbarui`);
+
+            // --- ⚡ LOGIKA NOTIFIKASI REAL-TIME KE SELLER (POST-COMMIT) ---
+            // Mengirim notifikasi ke setiap toko yang ada di dalam billing ini [cite: 3502, 3516]
+            orders.forEach(order => {
+                const storeId = order.store_id;
+                
+                // Gunakan namespace /chat sesuai standar Navbar Seller [cite: 3510]
+                io.of('/chat').to(`store:${storeId}`).emit('NEW_ORDER', {
+                    orderId: order.id,
+                    grandTotal: order.grand_total,
+                    buyerName: billing.buyer?.full_name || "Seorang Pembeli",
+                    timestamp: new Date()
+                });
+            });
+
         } catch (error) {
-            await t.rollback();
+            if (t) await t.rollback();
             console.error(`Gagal memproses pelunasan Billing ${billingId}:`, error);
             throw error;
         }

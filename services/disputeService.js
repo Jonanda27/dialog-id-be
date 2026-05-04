@@ -1,33 +1,43 @@
 import db from '../models/index.js';
+import { io } from '../app.js';
 
 export const openDispute = async (orderId, buyerId, reason, files) => {
     const t = await db.sequelize.transaction();
 
     try {
-        // 1. Ambil Data Order dengan Pessimistic Lock untuk keamanan transaksi
-        const order = await db.Order.findByPk(orderId, { transaction: t, lock: t.LOCK.UPDATE });
-        if (!order) throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
+        // 1. Ambil Data Order dengan Pessimistic Lock [cite: 3115]
+        const order = await db.Order.findByPk(orderId, { 
+    transaction: t, 
+    lock: t.LOCK.UPDATE,
+    include: [{ 
+        model: db.User, 
+        as: 'buyer', 
+        attributes: ['full_name'],
+        required: true // Memaksa INNER JOIN agar aman untuk FOR UPDATE
+    }] 
+});
+        if (!order) throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' }; 
 
-        if (order.buyer_id !== buyerId) throw { statusCode: 403, message: 'Bukan pesanan Anda.' };
+        if (order.buyer_id !== buyerId) throw { statusCode: 403, message: 'Bukan pesanan Anda.' }; 
 
-        // Validasi status: Dispute hanya bisa dilakukan jika barang sudah dalam perjalanan atau sampai
+        // Validasi status pesanan [cite: 3118]
         if (order.status !== 'shipped' && order.status !== 'delivered') {
             throw { statusCode: 400, message: 'Dispute hanya bisa diajukan untuk pesanan yang sudah dikirim.' };
         }
 
-        // 2. Ubah Status Order menjadi 'disputed' [cite: 1169]
+        // 2. Ubah Status Order menjadi 'disputed' [cite: 3119]
         order.status = 'disputed';
         await order.save({ transaction: t });
 
-        // 3. Bekukan Dana Escrow (Ubah status dari 'held' menjadi 'frozen') [cite: 1170, 1172]
+        // 3. Bekukan Dana Escrow [cite: 3120, 3122]
         const escrow = await db.Escrow.findOne({ where: { order_id: orderId }, transaction: t, lock: t.LOCK.UPDATE });
         if (!escrow || escrow.status !== 'held') {
             throw { statusCode: 400, message: 'Dana Escrow tidak valid atau sudah cair.' };
         }
         escrow.status = 'frozen';
-        await escrow.save({ transaction: t });
+        await escrow.save({ transaction: t }); 
 
-        // 4. Buat Record Dispute [cite: 1173]
+        // 4. Buat Record Dispute [cite: 3123]
         const dispute = await db.Dispute.create({
             order_id: orderId,
             buyer_id: buyerId,
@@ -36,24 +46,37 @@ export const openDispute = async (orderId, buyerId, reason, files) => {
             status: 'open'
         }, { transaction: t });
 
-        // 5. Simpan Media Bukti (Cloudinary Integration) [cite: 1174]
+        // 5. Simpan Media Bukti (Cloudinary Integration) [cite: 3124]
         if (files && files.length > 0) {
             const mediaData = files.map(file => ({
                 dispute_id: dispute.id,
                 uploader_id: buyerId,
-                // Menggunakan path dari Cloudinary yang disediakan oleh multer-storage-cloudinary [cite: 840]
-                media_url: file.path 
+                media_url: file.path // Path dari Cloudinary [cite: 3125]
             }));
 
-            // Menyimpan daftar URL bukti ke tabel dispute_media [cite: 667, 1175]
             await db.DisputeMedia.bulkCreate(mediaData, { transaction: t });
         }
 
-        // Commit transaksi jika semua langkah berhasil
+        // Commit transaksi database [cite: 3127]
         await t.commit();
-        return dispute;
+
+        // --- ⚡ LOGIKA REAL-TIME NOTIFICATION (NEW_DISPUTE) ---
+        // Kirim notifikasi ke room toko spesifik agar seller menerima pesan secara real-time
+        // Format room mengikuti standar chatSocket: `store:${storeId}` 
+        const storeId = order.store_id;
+        
+        // Memancarkan sinyal ke namespace chat agar Navbar Seller (FE) bisa menangkapnya
+        io.of('/chat').to(`store:${storeId}`).emit('NEW_DISPUTE', {
+            orderId: orderId,
+            disputeId: dispute.id,
+            reason: reason,
+            buyerName: order.buyer?.full_name || "Seorang Pembeli",
+            timestamp: new Date()
+        });
+
+        return dispute; 
     } catch (error) {
-        // Batalkan semua perubahan jika terjadi error
+        // Batalkan semua perubahan jika terjadi error [cite: 3128]
         if (t) await t.rollback();
         const err = new Error(error.message || 'Gagal membuka dispute.');
         err.statusCode = error.statusCode || 500;

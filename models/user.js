@@ -72,6 +72,10 @@ export default class User extends Model {
       foreignKey: "user_id",
       as: "bankAccounts",
     });
+    this.hasOne(models.UserProfile, {
+      foreignKey: "user_id",
+      as: "profile",
+    });
   }
 
   /**

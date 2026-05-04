@@ -1,5 +1,6 @@
 import db from '../models/index.js';
 import * as shippingService from './shippingService.js'; // Import layanan logistik internal
+import { io } from '../app.js';
 
 class OrderService {
     /**

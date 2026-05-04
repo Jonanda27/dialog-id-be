@@ -32,6 +32,8 @@ import disputeRoutes from './routes/disputeRoutes.js';
 import auctionRoutes from './routes/auctionRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import userBankRoutes from './routes/userBankRoutes.js';
+import profileRoutes from './routes/userProfileRoutes.js';
+import cartRoutes from './routes/cartRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -80,6 +82,7 @@ const io = new Server(server, {
   }
 });
 
+export { io };
 initializeChatSocket(io);
 
 // Mendaftarkan logic Controller untuk namespace Auction
@@ -148,6 +151,8 @@ app.use('/api/disputes', disputeRoutes);
 app.use('/api/v1/auctions', auctionRoutes); 
 app.use('/api/chat', chatRoutes);
 app.use('/api/user-banks', userBankRoutes);
+app.use('/api/v1/profile', profileRoutes);
+app.use('/api/v1/cart', cartRoutes);
 
 // ==========================================
 // 5. 404 & GLOBAL ERROR HANDLING

@@ -24,6 +24,8 @@ import Chat from './Chat.js';
 import Dispute from './Dispute.js';
 import DisputeMedia from './DisputeMedia.js';
 import UserBankAccount from './UserBankAccount.js';
+import UserProfile from './UserProfile.js';
+import Cart from './Cart.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -60,6 +62,8 @@ const models = {
   Dispute: Dispute(sequelize, Sequelize.DataTypes),
   DisputeMedia: DisputeMedia(sequelize, Sequelize.DataTypes),
   UserBankAccount: UserBankAccount.init(sequelize),
+  UserProfile: UserProfile.init(sequelize),
+  Cart: Cart.init(sequelize),
 };
 
 // ⚡ PERBAIKAN: Gabungkan instance sequelize ke dalam object db 
