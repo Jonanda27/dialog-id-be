@@ -1,16 +1,26 @@
 import db from '../models/index.js';
+import { io } from '../app.js';
 
 export const openDispute = async (orderId, buyerId, reason, files) => {
     const t = await db.sequelize.transaction();
 
     try {
-        // 1. Ambil Data Order dengan Pessimistic Lock untuk keamanan transaksi
-        const order = await db.Order.findByPk(orderId, { transaction: t, lock: t.LOCK.UPDATE });
+        // 1. Ambil Data Order dengan Pessimistic Lock
+        const order = await db.Order.findByPk(orderId, {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+            include: [{
+                model: db.User,
+                as: 'buyer',
+                attributes: ['full_name'],
+                required: true // Memaksa INNER JOIN agar aman untuk FOR UPDATE
+            }]
+        });
         if (!order) throw { statusCode: 404, message: 'Pesanan tidak ditemukan.' };
 
         if (order.buyer_id !== buyerId) throw { statusCode: 403, message: 'Bukan pesanan Anda.' };
 
-        // Validasi status: Dispute hanya bisa dilakukan jika barang sudah dalam perjalanan atau sampai
+        // Validasi status pesanan
         if (order.status !== 'shipped' && order.status !== 'delivered') {
             throw { statusCode: 400, message: 'Dispute hanya bisa diajukan untuk pesanan yang sudah dikirim.' };
         }
@@ -41,16 +51,32 @@ export const openDispute = async (orderId, buyerId, reason, files) => {
             const mediaData = files.map(file => ({
                 dispute_id: dispute.id,
                 uploader_id: buyerId,
-                media_url: file.path
+                media_url: file.path // Path dari Cloudinary
             }));
 
             await db.DisputeMedia.bulkCreate(mediaData, { transaction: t });
         }
 
-        // Commit transaksi jika semua langkah berhasil
+        // Commit transaksi database
         await t.commit();
+
+        // --- ⚡ LOGIKA REAL-TIME NOTIFICATION (NEW_DISPUTE) ---
+        // Kirim notifikasi ke room toko spesifik agar seller menerima pesan secara real-time
+        // Format room mengikuti standar chatSocket: `store:${storeId}` 
+        const storeId = order.store_id;
+
+        // Memancarkan sinyal ke namespace chat agar Navbar Seller (FE) bisa menangkapnya
+        io.of('/chat').to(`store:${storeId}`).emit('NEW_DISPUTE', {
+            orderId: orderId,
+            disputeId: dispute.id,
+            reason: reason,
+            buyerName: order.buyer?.full_name || "Seorang Pembeli",
+            timestamp: new Date()
+        });
+
         return dispute;
     } catch (error) {
+        // Batalkan semua perubahan jika terjadi error
         if (t) await t.rollback();
         const err = new Error(error.message || 'Gagal membuka dispute.');
         err.statusCode = error.statusCode || 500;

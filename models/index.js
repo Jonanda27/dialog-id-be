@@ -25,7 +25,10 @@ import Chat from './Chat.js';
 import Dispute from './Dispute.js';
 import DisputeMedia from './DisputeMedia.js';
 import UserBankAccount from './UserBankAccount.js';
-import RefundPayout from './RefundPayout.js'; // ⚡ BARU: Import model RefundPayout
+// ⚡ Ekstraksi Model dari kedua Branch
+import RefundPayout from './RefundPayout.js';
+import UserProfile from './UserProfile.js';
+import Cart from './Cart.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env];
@@ -63,7 +66,10 @@ const models = {
   Dispute: Dispute(sequelize, Sequelize.DataTypes),
   DisputeMedia: DisputeMedia(sequelize, Sequelize.DataTypes),
   UserBankAccount: UserBankAccount.init(sequelize),
-  RefundPayout: RefundPayout.init(sequelize), // ⚡ BARU: Inisialisasi model RefundPayout
+  // ⚡ Registrasi Model dari kedua Branch
+  RefundPayout: RefundPayout.init(sequelize),
+  UserProfile: UserProfile.init(sequelize),
+  Cart: Cart.init(sequelize),
 };
 
 // ⚡ PERBAIKAN: Gabungkan instance sequelize ke dalam object db 
@@ -75,7 +81,7 @@ const db = {
 };
 
 // Eksekusi fungsi associate() jika ada di dalam model
-// Di sinilah relasi Category -> SubCategory -> Product dirangkai
+// Di sinilah relasi dirangkai secara dinamis
 Object.values(models).forEach((model) => {
   if (typeof model.associate === 'function') {
     model.associate(db);
