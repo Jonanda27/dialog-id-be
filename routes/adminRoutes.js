@@ -1,5 +1,5 @@
 import express from 'express';
-import { getPendingStores, updateStoreStatus, suspendStore, unsuspendStore, getRefunds } from '../controllers/adminController.js';
+import { getPendingStores, updateStoreStatus, suspendStore, unsuspendStore, getRefunds, getAdminDashboard } from '../controllers/adminController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -159,5 +159,16 @@ router.post('/stores/:id/unsuspend', unsuspendStore);
  * - bearerAuth: []
  */
 router.get('/refunds', getRefunds);
+
+/**
+ * @swagger
+ * /api/admin/dashboard:
+ * get:
+ * summary: Mendapatkan data lengkap Admin Command Center
+ * tags: [Admin]
+ * security:
+ * - bearerAuth: []
+ */
+router.get('/dashboard', getAdminDashboard);
 
 export default router;

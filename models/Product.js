@@ -78,6 +78,7 @@ export default class Product extends Model {
         this.belongsTo(models.Store, { foreignKey: 'store_id', as: 'store' });
         this.hasMany(models.ProductMedia, { foreignKey: 'product_id', as: 'media' });
         this.hasMany(models.Review, { foreignKey: 'product_id', as: 'reviews' });
+        this.hasMany(models.Wishlist, { foreignKey: 'product_id', as: 'wishlists' });
 
         if (models.SubCategory) {
             this.belongsTo(models.SubCategory, { foreignKey: 'sub_category_id', as: 'subCategory' });

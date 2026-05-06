@@ -62,3 +62,15 @@ export const getRefunds = asyncHandler(async (req, res) => {
         result
     );
 });
+
+export const getAdminDashboard = asyncHandler(async (req, res) => {
+    const stats = await adminService.getDashboardStats();
+    const analytics = await adminService.getTransactionAnalytics();
+    const activities = await adminService.getRecentActivities();
+
+    return successResponse(res, 200, 'Berhasil memuat data Command Center', {
+        summary: stats,
+        chart_data: analytics,
+        recent_activities: activities
+    });
+});

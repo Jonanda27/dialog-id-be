@@ -76,6 +76,7 @@ export default class User extends Model {
       foreignKey: "user_id",
       as: "profile",
     });
+    this.hasMany(models.Wishlist, { foreignKey: "user_id", as: "wishlists" });
   }
 
   /**

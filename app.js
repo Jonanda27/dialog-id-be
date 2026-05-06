@@ -34,6 +34,7 @@ import chatRoutes from './routes/chatRoutes.js';
 import userBankRoutes from './routes/userBankRoutes.js';
 import profileRoutes from './routes/userProfileRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
+import wishlistRoutes from './routes/wishlistRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -153,6 +154,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/user-banks', userBankRoutes);
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/cart', cartRoutes);
+app.use('/api/v1/wishlist', wishlistRoutes);
 
 // ==========================================
 // 5. 404 & GLOBAL ERROR HANDLING

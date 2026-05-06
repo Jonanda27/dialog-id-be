@@ -16,19 +16,18 @@ export const getProductDetails = async (productId) => {
                 model: db.Store,
                 as: 'store',
                 attributes: ['id', 'name', 'description']
-            },
-            // ⚡ FIX: TAMBAHKAN RELASI AUCTION DI SINI
+            }
+            // ❌ BAGIAN AUCTION DI BAWAH INI HARUS DIHAPUS ❌
+            /*
             {
                 model: db.Auction,
                 as: 'auction',
-                // Kita hanya ingin menampilkan lelang yang valid (bukan yang gagal/batal)
                 where: {
-                    status: {
-                        [Op.notIn]: ['FAILED']
-                    }
+                    status: { [Op.notIn]: ['FAILED'] }
                 },
-                required: false // ⚡ PENTING: required false agar produk biasa (tanpa lelang) tetep nampil
+                required: false
             }
+            */
         ]
     });
 
